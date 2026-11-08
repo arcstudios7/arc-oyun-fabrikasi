@@ -238,13 +238,15 @@ namespace Game
         /// <summary>Pulls the camera toward the bike (and up) until it is above a street, so it never enters a building.</summary>
         Vector3 KeepCameraOnStreet(Vector3 bike, Vector3 camPos)
         {
-            if (city.IsDrivable(camPos)) return camPos;
+            const float Margin = 1.8f; // bay windows (cumba) and awnings stick out over the sidewalk
+            if (city.IsClear(camPos, Margin)) return camPos;
             for (float t = 0.9f; t > 0.05f; t -= 0.1f)
             {
                 Vector3 p = Vector3.Lerp(bike, camPos, t);
-                if (city.IsDrivable(p)) return new Vector3(p.x, camPos.y + (1f - t) * 2.5f, p.z);
+                if (city.IsClear(p, Margin)) return new Vector3(p.x, camPos.y + (1f - t) * 2.5f, p.z);
             }
-            return new Vector3(bike.x, camPos.y + 2.5f, bike.z) - moto.Forward * 0.5f;
+            // Very tight spot: hover above the bike.
+            return new Vector3(bike.x, bike.y + 4.5f, bike.z) - moto.Forward * 1.2f;
         }
 
         void ShowToast(string text)

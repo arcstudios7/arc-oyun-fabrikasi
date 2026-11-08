@@ -34,6 +34,7 @@ namespace Game
         public const float AlleyHalf = 3.5f;
         public const float AlleyLength = 85f;
         public static readonly float[] AlleyZ = { -60f, 70f };
+        const float AvenueDepth = 15f;
 
         Transform root;
         Font font;
@@ -58,6 +59,7 @@ namespace Game
             for (int i = 0; i < AlleyZ.Length; i++) BuildAlley(AlleyZ[i], i);
             BuildBlocksAlongAvenue();
             for (int i = 0; i < AlleyZ.Length; i++) BuildBlocksAlongAlley(AlleyZ[i]);
+            BuildEndCaps();
             BuildStreetProps();
         }
 
@@ -69,6 +71,13 @@ namespace Game
             var v = new Vector2(p.x, p.z);
             for (int i = 0; i < drivable.Count; i++) if (drivable[i].Contains(v)) return true;
             return false;
+        }
+
+        /// <summary>True if the point and a square of +-margin around it are all on the street (keeps the camera out of bay windows / awnings).</summary>
+        public bool IsClear(Vector3 p, float margin)
+        {
+            return IsDrivable(p) && IsDrivable(p + new Vector3(margin, 0f, 0f)) && IsDrivable(p - new Vector3(margin, 0f, 0f))
+                && IsDrivable(p + new Vector3(0f, 0f, margin)) && IsDrivable(p - new Vector3(0f, 0f, margin));
         }
 
         /// <summary>Returns true and the push-out direction if a circle (XZ) at p with radius r hits an obstacle.</summary>
@@ -172,7 +181,7 @@ namespace Game
                     // Building faces the avenue: front at x = side * WalkHalf, facing -side along X.
                     Vector3 front = new Vector3(side * WalkHalf, 0f, z + w * 0.5f);
                     float yaw = side > 0 ? -90f : 90f;
-                    MakeBuilding(front, yaw, w, Random.Range(11f, 15f), Random.Range(3, 7), "Fevzi Paşa Cd.");
+                    MakeBuilding(front, yaw, w, AvenueDepth, Random.Range(3, 7), "Fevzi Paşa Cd.");
                     z += w + Random.Range(0f, 0.4f);
                 }
             }
@@ -184,7 +193,7 @@ namespace Game
             {
                 foreach (float xSide in new[] { -1f, 1f })
                 {
-                    float x = WalkHalf + 16f; // behind the avenue buildings
+                    float x = WalkHalf + AvenueDepth; // right behind the avenue buildings
                     string street = StreetNames[Random.Range(0, StreetNames.Length)];
                     while (x < AlleyLength - 6f)
                     {
@@ -317,6 +326,27 @@ namespace Game
             holder.gameObject.name = "Tabela";
             var keep = new GameObject("_");
             keep.transform.SetParent(bg.transform, false);
+        }
+
+        /// <summary>Buildings that close the far ends of every street, so the city never looks unfinished.</summary>
+        void BuildEndCaps()
+        {
+            // Avenue ends: a building row across the street, behind the barriers.
+            foreach (float zSide in new[] { -1f, 1f })
+            {
+                float zFront = zSide * (MainLength + 0.5f);
+                float yaw = zSide > 0 ? 180f : 0f;
+                for (float x = -WalkHalf - 10f; x < WalkHalf + 10f; x += 10f)
+                    MakeBuilding(new Vector3(x + 5f, 0f, zFront), yaw, 10f, 14f, Random.Range(4, 7), "Fevzi Paşa Cd.");
+            }
+            // Alley ends
+            foreach (float az in AlleyZ)
+                foreach (float xSide in new[] { -1f, 1f })
+                {
+                    float xFront = xSide * (AlleyLength + 0.5f);
+                    float yaw = xSide > 0 ? -90f : 90f;
+                    MakeBuilding(new Vector3(xFront, 0f, az), yaw, AlleyHalf * 2f + 8f, 12f, Random.Range(3, 5), StreetNames[Random.Range(0, StreetNames.Length)]);
+                }
         }
 
         // ---------------- props ----------------
