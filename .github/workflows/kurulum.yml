@@ -52,13 +52,13 @@ jobs:
           if [ "$HAS_CF_TOKEN" = "true" ] && [ "$HAS_CF_ACCOUNT" = "true" ]; then
             USER_OK=$(curl -s -H "Authorization: Bearer $CF_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify | grep -c '"active"' || true)
             ACC_OK=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify" | grep -c '"active"' || true)
-            PAGES_OK=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" | grep -c '"success":true' || true)
+            PAGES_OK=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" | jq -r 'if .success == true then 1 else 0 end' || echo 0)
             echo "user=$USER_OK account=$ACC_OK pages=$PAGES_OK"
             echo "Account ID uzunluğu: ${#CF_ACCOUNT} (32 olmalı), sadece hex mi: $(printf '%s' "$CF_ACCOUNT" | grep -Eqx '[0-9a-f]{32}' && echo evet || echo HAYIR)"
             echo "Token uzunluğu: ${#CF_TOKEN}, boşluk/satır sonu içeriyor mu: $(printf '%s' "$CF_TOKEN" | grep -q '[[:space:]]' && echo EVET || echo hayır)"
             echo "user verify hata: $(curl -s -H "Authorization: Bearer $CF_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify | jq -c '.errors')"
             echo "pages hata: $(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" | jq -c '.errors')"
-            echo "token'ın gördüğü hesap sayısı: $(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts" | jq -c '[.result[]?.id == env.CF_ACCOUNT] ')"
+            echo "pages yanıt: $(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" | jq -c '{success, proje_sayisi: (.result|length?)}')"
             echo "account verify hata: $(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify" | jq -c '.errors')"
             if [ "$PAGES_OK" != "0" ]; then
               row "Cloudflare (web linki)" "✅ token Pages projelerine erişebiliyor"
