@@ -168,6 +168,8 @@ jobs:
     if: ${{ inputs.ekran == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -232,6 +234,18 @@ jobs:
         with:
           name: ekran
           path: shots
+
+      # Görüntüleri repodaki "ekran" dalına da koy (Claude buradan okuyup görür).
+      - name: Görüntüleri 'ekran' dalına gönder
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd shots || exit 0
+          git init -q && git checkout -q -b ekran
+          git add -A
+          git -c user.name="ARC Oyun Fabrikası" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Ekran görüntüleri: çalıştırma ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" ekran
 
   publish:
     name: 🚀 Yayınla
