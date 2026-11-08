@@ -17,6 +17,9 @@ namespace Game
         /// <summary>Layer used by the player, bike and markers so ground raycasts ignore them.</summary>
         public const int PlayerLayer = 2; // Unity's built-in "Ignore Raycast"
         public const int GroundMask = ~(1 << PlayerLayer);
+        public const int FloorLayer = 4;  // built-in "Water": the invisible safety floor (SafetyFloor.cs)
+        /// <summary>Only the real city geometry (no player, no safety floor): used to probe street height.</summary>
+        public const int TilesMask = GroundMask & ~(1 << FloorLayer);
 
         public readonly CesiumGeoreference Geo;
         public readonly Cesium3DTileset Tiles;
@@ -63,7 +66,7 @@ namespace Game
         public static bool Ground(Vector3 pos, out Vector3 hit, float fromHeight = 250f)
         {
             var start = new Vector3(pos.x, fromHeight, pos.z);
-            if (Physics.Raycast(start, Vector3.down, out var h, fromHeight + 250f, GroundMask, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(start, Vector3.down, out var h, fromHeight + 250f, TilesMask, QueryTriggerInteraction.Ignore))
             {
                 hit = h.point;
                 return true;
@@ -79,7 +82,7 @@ namespace Game
         public static bool StreetGround(Vector3 pos, float expectedY, out Vector3 hit)
         {
             var start = new Vector3(pos.x, expectedY + 6f, pos.z);
-            if (Physics.Raycast(start, Vector3.down, out var h, 40f, GroundMask, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(start, Vector3.down, out var h, 40f, TilesMask, QueryTriggerInteraction.Ignore))
             {
                 hit = h.point;
                 return true;

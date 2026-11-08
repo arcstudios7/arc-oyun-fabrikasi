@@ -43,6 +43,7 @@ namespace Game
         readonly System.Random rng = new System.Random(1453);
 
         bool ready;
+        SafetyFloor floor;
         float logTimer, readyTimer, shiftLeft, orderTime, orderLeft, gpsTimer, fade, toastTime;
         int delivered;
         string toast;
@@ -79,6 +80,7 @@ namespace Game
             roads = new Roads();
             input = new Controls();
             rig = new CamRig(cam);
+            floor = SafetyFloor.Create();
             ArcShot.ReadyCheck = () => ready;
             ArcShot.ExtraWait = 60f;   // software renderer in CI runs ~4 fps: give the detail tiles time
 
@@ -233,6 +235,8 @@ namespace Game
             rig.Target = courier.Riding ? bike.transform : courier.transform;
             rig.VehicleMode = courier.Riding;
             rig.SnapBehind();
+            floor.Target = rig.Target;
+            floor.Forget();
         }
 
         // ---------------- frame ----------------
@@ -342,6 +346,7 @@ namespace Game
             if (gpsTimer <= 0f) { gpsTimer = 1.2f; UpdateGps(playerPos, target); }
 
             rig.Target = courier.Riding ? bike.transform : courier.transform;
+            floor.Target = rig.Target;
             rig.VehicleMode = courier.Riding;
             rig.Height = courier.Riding ? 1.5f : 1.55f;
             rig.Distance = courier.Riding ? 5.2f : 3.6f;
