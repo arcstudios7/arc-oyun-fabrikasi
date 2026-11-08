@@ -55,12 +55,14 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 > Console'da **Limits / Billing** bölümünden aylık harcama limiti koymanı öneririm. Her oyun ya da değişiklik birkaç dolarlık API kullanımı tutabilir.
 
 ### 4) Cloudflare Pages (web linki için)
-Ücretsiz GitHub planında private repolarda GitHub Pages yok. Web sürümünü bu yüzden Cloudflare Pages'e koyuyoruz. Her oyun kendi adresinde yayında kalıyor: `arc-<oyun-adi>.pages.dev`.
+Ücretsiz GitHub planında private repolarda GitHub Pages yok. Web sürümünü bu yüzden Cloudflare Pages'e koyuyoruz. Her oyun kendi adresinde yayında kalıyor: **`<oyun-adi>.arcstudios.com.tr`** (yedek: `arc-<oyun-adi>.pages.dev`; bazı Türk internet sağlayıcıları pages.dev'i engellediği için asıl adres alan adın).
 1. https://dash.cloudflare.com → sağ üstte profil → **My Profile → API Tokens → Create Token**
-2. **Create Custom Token**: izin olarak **Account → Cloudflare Pages → Edit** seç → **Continue → Create Token** → token'ı kopyala → `CLOUDFLARE_API_TOKEN`
+2. **Create Token → Start from scratch → Account policy** → **Developer Platform → Cloudflare Pages → Edit**
+   Ardından **Add new policy → Zone policy → Specific zone: arcstudios.com.tr** → **DNS & Zones → DNS: Edit** ve **Zone: Read**
+   → **Continue to summary → Create Token** → **sadece token değerini** kopyala (`Bearer` ya da tırnak olmadan) → `CLOUDFLARE_API_TOKEN`
 3. Hesap kimliği: Dashboard ana sayfasında hesabının yanındaki **⋯ → Copy Account ID** (ya da Workers & Pages sayfasının sağ tarafında) → `CLOUDFLARE_ACCOUNT_ID`
 
-İstersen bir oyuna sonradan Cloudflare'den `oyun.arcstudios.com.tr` gibi bir alt alan adı bağlayabilirsin (Workers & Pages → proje → Custom domains).
+Alt alan adı her build'de otomatik bağlanır. Başka bir alan adı kullanmak istersen repoda Settings → Secrets and variables → Actions → **Variables** sekmesine `ARC_DOMAIN` ekle.
 Cloudflare ayarlanmazsa da sistem çalışır. Web sürümü o zaman sadece Release'te zip olarak gelir.
 
 ### 5) Kurulumu kontrol et
