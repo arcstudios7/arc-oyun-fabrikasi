@@ -461,6 +461,8 @@ namespace Game
             base.DrawHud();
             int m = Mathf.FloorToInt(shiftLeft / 60f), s = Mathf.FloorToInt(shiftLeft % 60f);
             Hud.Text("Vardiya " + m + ":" + s.ToString("00") + "   Teslimat: " + delivered, 24, 112, 0.7f);
+            float prog = world.Progress;
+            if (prog < 95f) Hud.Text("Şehir detayı yükleniyor: %" + Mathf.RoundToInt(prog), 24, 150, 0.6f, new Color(1f, 0.85f, 0.4f));
 
             var t = step == Step.ToRestaurant ? restaurant : customer;
             Vector3 p = courier.Riding ? bike.transform.position : courier.transform.position;

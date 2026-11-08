@@ -48,7 +48,11 @@ namespace Game
             Tiles = tGo.AddComponent<Cesium3DTileset>();
             Tiles.ionAccessToken = token.text.Trim();
             Tiles.ionAssetID = GoogleTilesAssetId;
-            Tiles.maximumScreenSpaceError = 6f;        // lower = sharper (PC can afford it)
+            // 16 = Cesium's default and what Google recommends for its tiles. Lower values multiply the tile count at
+            // street level so much that streaming never catches up and the city stays a flat low-detail photo.
+            Tiles.maximumScreenSpaceError = 16f;
+            Tiles.maximumSimultaneousTileLoads = 32;   // more parallel downloads (default 20)
+            Tiles.maximumCachedBytes = 1024L * 1024L * 1024L;
             Tiles.createPhysicsMeshes = true;          // we drive and walk on the real geometry
             Tiles.showCreditsOnScreen = true;          // Google / Cesium attribution is required
         }
