@@ -393,7 +393,7 @@ jobs:
           sudo apt-get install -y -qq xvfb mesa-utils libgl1-mesa-dri > /dev/null
           mkdir -p shots
           chmod +x build/Linux/Oyun.x86_64
-          timeout 240 xvfb-run -a -s "-screen 0 1280x720x24" \
+          timeout 480 xvfb-run -a -s "-screen 0 1280x720x24" \
             ./build/Linux/Oyun.x86_64 -force-glcore -screen-width 1280 -screen-height 720 -screen-fullscreen 0 \
             -logFile "$PWD/shots/player.log" -arcshot "$PWD/shots" || echo "oyun çıkış kodu: $?"
           ls -la shots

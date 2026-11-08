@@ -43,7 +43,7 @@ namespace Game
         readonly System.Random rng = new System.Random(1453);
 
         bool ready;
-        float readyTimer, shiftLeft, orderTime, orderLeft, gpsTimer, fade, toastTime;
+        float logTimer, readyTimer, shiftLeft, orderTime, orderLeft, gpsTimer, fade, toastTime;
         int delivered;
         string toast;
         Vector3 spawn;
@@ -80,6 +80,7 @@ namespace Game
             input = new Controls();
             rig = new CamRig(cam);
             ArcShot.ReadyCheck = () => ready;
+            ArcShot.ExtraWait = 60f;   // software renderer in CI runs ~4 fps: give the detail tiles time
 
             pickupMat = Mats.Unlit(new Color(1f, 0.75f, 0.1f));
             dropMat = Mats.Unlit(new Color(0.15f, 0.95f, 0.45f));
@@ -242,6 +243,16 @@ namespace Game
             if (bike == null) return;
 
             // World loading: keep everything frozen until the street under the spawn exists.
+            // Diagnostics for the CI screenshot run (cheap: one line every 5 s for the first 4 minutes).
+            logTimer += Time.unscaledDeltaTime;
+            if (logTimer >= 5f && Time.realtimeSinceStartup < 240f)
+            {
+                logTimer = 0f;
+                var cp = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
+                Debug.Log("[Eve] t=" + Time.realtimeSinceStartup.ToString("0") + " hazır=" + ready + " yükleme=%" + world.Progress.ToString("0")
+                          + " kamera=" + cp.ToString("0") + " fps=" + (1f / Mathf.Max(0.0001f, Time.smoothDeltaTime)).ToString("0"));
+            }
+
             if (!ready)
             {
                 readyTimer += Time.unscaledDeltaTime;
@@ -249,6 +260,7 @@ namespace Game
                 if (loadedEnough && readyTimer > 3f && EveWorld.Ground(spawn, out var g))
                 {
                     ready = true;
+                    Debug.Log("[Eve] Hazır: t=" + readyTimer.ToString("0") + " s, yükleme=%" + world.Progress.ToString("0") + ", zemin y=" + g.y.ToString("0.0"));
                     spawn = g;
                     PlaceOnStreet(spawn, bike.transform.eulerAngles.y);
                 }

@@ -14,6 +14,9 @@ namespace Arc
 
         /// <summary>Optional: games that stream their world set this; screenshots wait until it returns true (max 120 s).</summary>
         public static System.Func<bool> ReadyCheck;
+
+        /// <summary>Seconds to wait after ReadyCheck passes (streamed worlds load detail slowly on the CI software renderer).</summary>
+        public static float ExtraWait = 8f;
         string dir;
 
         internal static void TryStart()
@@ -40,7 +43,7 @@ namespace Arc
                 waited += 1f;
                 yield return new WaitForSecondsRealtime(1f);
             }
-            if (ReadyCheck != null) yield return new WaitForSecondsRealtime(8f); // let detail tiles stream in
+            if (ReadyCheck != null) yield return new WaitForSecondsRealtime(ExtraWait); // let detail tiles stream in
             yield return Shot("01_menu");
 
             var game = FindFirstObjectByType<ArcGame>();
