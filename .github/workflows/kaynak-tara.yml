@@ -6,7 +6,7 @@ on:
     inputs:
       ara:
         description: "Aranacak kelimeler (boşlukla)"
-        default: "asphalt road sidewalk cobble brick plaster concrete tile wood metal facade"
+        default: "asphalt road sidewalk cobble paving brick plaster concrete tile wood metal facade"
         type: string
 
 permissions:
@@ -29,9 +29,9 @@ jobs:
           echo "== Model kategorileri"; jq -r '[.[] | .categories[]] | group_by(.) | map("\(.[0]):\(length)") | join(", ")' models.json
           echo "== Doku kategorileri"; jq -r '[.[] | .categories[]] | group_by(.) | map("\(.[0]):\(length)") | join(", ")' textures.json
           for w in $ARA; do
-            echo "== doku '$w':"; jq -r --arg w "$w" 'to_entries[] | select((.key|test($w)) or ((.value.tags//[])|index($w))) | "\(.key) [\(.value.categories|join("/"))] dl=\(.value.download_count)"' textures.json | sort -t= -k2 -nr | head -8
+            echo "== doku '$w':"; jq -r --arg w "$w" 'to_entries[] | select((.key|test($w)) or ((.value.tags//[])|index($w))) | "\(.key) [\(.value.categories|join("/"))] dl=\(.value.download_count)"' textures.json | awk -F'dl=' '{print $2"\t"$0}' | sort -nr | cut -f2 | head -10
           done
-          echo "== Şehir/gün batımı HDRI:"; jq -r 'to_entries[] | select(.value.categories | (index("urban") or index("sunrise-sunset"))) | "\(.key) [\(.value.categories|join("/"))] dl=\(.value.download_count)"' hdris.json | sort -t= -k2 -nr | head -15
+          echo "== Şehir/gün batımı HDRI:"; jq -r 'to_entries[] | select(.value.categories | (index("urban") or index("sunrise-sunset"))) | "\(.key) [\(.value.categories|join("/"))] dl=\(.value.download_count)"' hdris.json | awk -F'dl=' '{print $2"\t"$0}' | sort -nr | cut -f2 | head -25
           for w in motor bike scooter car vehicle person man woman human street lamp bench sign traffic cone barrier food door table chair plant tree; do
             echo "== model '$w':"; jq -r --arg w "$w" 'to_entries[] | select((.key|test($w)) or ((.value.tags//[])|index($w)) or ((.value.categories//[])|index($w))) | "\(.key) [\(.value.categories|join("/"))]"' models.json | head -6
           done
