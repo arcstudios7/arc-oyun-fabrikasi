@@ -1,323 +1,501 @@
+using System.Collections.Generic;
 using Arc;
 using UnityEngine;
 
 namespace Game
 {
     /// <summary>
-    /// EVE SERVİS — İstanbul'da motor kurye. Restorandan siparişi al, adrese zamanında teslim et.
-    /// Phase 1: realistic city + bike + order loop. (Traffic, pedestrians and police come in phase 2.)
+    /// EVE SERVİS — gerçek İstanbul'da (Google fotogerçekçi 3D) motor kurye.
+    /// Motorla restorana git, in, yürüyerek gir ve siparişi al; müşterinin kapısına götür. GPS gerçek sokakları izler.
     /// </summary>
     public class GameMain : ArcGame
     {
         protected override string HowToPlay =>
-            "Restorandan siparişi al, adrese zamanında götür!\nKlavye: W/S gaz-fren, A/D direksiyon  •  Telefon: ekrandaki düğmeler";
+            "Gerçek Karagümrük sokaklarında kuryesin. Restorana gir, siparişi al, kapıya teslim et.\n" +
+            "W A S D sür/yürü • Fare kamera • E bin/in/gir • Shift koş • Boşluk el freni • R sokağa dön • Oyun kolu desteklenir";
 
         protected override string EndTitle(bool won) => "VARDİYA BİTTİ";
 
         enum Step { ToRestaurant, ToCustomer }
 
-        City city;
-        Moto moto;
+        class Place
+        {
+            public string Name, Address;
+            public Vector3 Door;      // on the sidewalk, snapped to the ground when close
+            public int Node;
+            public bool Snapped;
+        }
+
+        EveWorld world;
+        Roads roads;
+        Controls input;
+        CamRig rig;
+        Bike bike;
+        Courier courier;
         Camera cam;
-        Transform beacon, arrow;
-        Material beaconPickup, beaconDrop;
 
-        Step step;
+        readonly List<Place> restaurants = new List<Place>();
         Place restaurant, customer;
-        float orderTime, orderTimeLeft, shiftLeft, crashCooldown;
-        int delivered, late;
+        Step step;
+        Transform beacon;
+        LineRenderer gps;
+        Material pickupMat, dropMat;
+        readonly System.Random rng = new System.Random(1453);
+
+        bool ready;
+        float readyTimer, shiftLeft, orderTime, orderLeft, gpsTimer, fade, toastTime;
+        int delivered;
         string toast;
-        float toastTime;
+        Vector3 spawn;
+        float streetY;           // last known street height near the player
 
-        const float ShiftSeconds = 300f;
-        const float ArriveRadius = 3.2f;
+        const float ShiftSeconds = 480f;
+        const float DoorRadius = 1.8f;
 
-        // camera smoothing
-        Vector3 camVel;
-        float orbit;
+        static readonly string[] RestaurantNames =
+        {
+            "Karagümrük Köftecisi", "Balat Pide Salonu", "Dürümcü Hasan Usta", "Fatih Lahmacun", "Çorbacı Nuri",
+            "Edirnekapı Kebap", "Haliç Balık Ekmek", "Fener Börekçisi", "Kariye Mantı Evi", "Atikali Ciğercisi",
+            "Çarşamba Tantuni", "Draman Pilavcısı", "Yavuz Selim Kokoreç", "Hırka-i Şerif Simit Fırını"
+        };
 
-        // touch controls (screen-space rects, bottom-left origin like Input.mousePosition)
-        float tThrottle, tSteer;
+        // ---------------- setup ----------------
 
         protected override void Setup()
         {
             cam = Camera.main;
-            cam.orthographic = false;
-            cam.fieldOfView = 62f;
-            cam.nearClipPlane = 0.1f;
-            cam.farClipPlane = 700f;
+            cam.nearClipPlane = 0.15f;
+            cam.farClipPlane = 6000f;
+            if (Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.LinuxPlayer || Application.isEditor)
+            {
+                QualitySettings.vSyncCount = 1;
+                Application.targetFrameRate = -1;
+            }
 
-            Look.Realistic("belfast_sunset_puresky", sunElevation: 28f, sunAzimuth: -35f, sunIntensity: 1.7f,
-                sunColor: new Color(1f, 0.86f, 0.68f), exposure: 0.2f, fogDensity: 0.006f, fogColor: new Color(0.86f, 0.74f, 0.62f));
+            Look.Realistic("kloppenheim_06_puresky", sunElevation: 48f, sunAzimuth: 150f, sunIntensity: 2.2f,
+                sunColor: new Color(1f, 0.96f, 0.9f), exposure: 0f, fogDensity: 0.0009f, fogColor: new Color(0.74f, 0.80f, 0.88f));
 
-            city = new City(1453);
-            moto = new Moto();
+            world = new EveWorld();
+            roads = new Roads();
+            input = new Controls();
+            rig = new CamRig(cam);
+            ArcShot.ReadyCheck = () => ready;
 
-            beaconPickup = Mats.Unlit(new Color(1f, 0.78f, 0.15f));
-            beaconDrop = Mats.Unlit(new Color(0.2f, 0.95f, 0.5f));
-            beacon = Shapes.Group("Hedef", Vector3.zero);
-            Shapes.Cylinder(new Vector3(0f, 6f, 0f), new Vector3(0.35f, 6f, 0.35f), Color.white, lit: false, parent: beacon);
-            Shapes.Cylinder(new Vector3(0f, 0.04f, 0f), new Vector3(3.4f, 0.03f, 3.4f), Color.white, lit: false, parent: beacon);
-            Shapes.Cube(new Vector3(0f, 2.2f, 0f), Vector3.one * 0.7f, Color.white, lit: false, parent: beacon);
+            pickupMat = Mats.Unlit(new Color(1f, 0.75f, 0.1f));
+            dropMat = Mats.Unlit(new Color(0.15f, 0.95f, 0.45f));
+            BuildBeacon();
+            BuildGps();
+            BuildRestaurants();
 
-            arrow = Shapes.Group("Ok", Vector3.zero);
-            var shaft = Shapes.Cube(new Vector3(0f, 0f, -0.15f), new Vector3(0.18f, 0.06f, 0.6f), Color.white, lit: false, parent: arrow);
-            var headL = Shapes.Cube(new Vector3(-0.12f, 0f, 0.2f), new Vector3(0.12f, 0.06f, 0.42f), Color.white, lit: false, parent: arrow);
-            headL.transform.localRotation = Quaternion.Euler(0f, 40f, 0f);
-            var headR = Shapes.Cube(new Vector3(0.12f, 0f, 0.2f), new Vector3(0.12f, 0.06f, 0.42f), Color.white, lit: false, parent: arrow);
-            headR.transform.localRotation = Quaternion.Euler(0f, -40f, 0f);
+            // Start on a real Karagümrük street near the origin
+            int startNode = roads.Loaded ? roads.Nearest(Vector3.zero) : -1;
+            spawn = startNode >= 0 ? roads.Pos(startNode) : Vector3.zero;
+            float yaw = startNode >= 0 ? StreetHeading(startNode) : 0f;
+            bike = Bike.Create(spawn + Vector3.up * 120f, yaw);
+            bike.Body.isKinematic = true;   // wait until the city under us has loaded
+            courier = Courier.Create(spawn + Vector3.up * 120f, yaw);
+            courier.Mount(bike);
+            bike.Ridden = true;
 
-            Sfx.Music("A3 C4 E4 - D4 C4 B3 - A3 E4 D4 C4 B3 - G3 -", 104f, 0.07f, Wave.Triangle);
+            Sfx.Music("D4 F4 A4 - G4 F4 E4 - D4 A4 G4 F4 E4 - C4 -", 96f, 0.05f, Wave.Triangle);
         }
+
+        void BuildBeacon()
+        {
+            beacon = Shapes.Group("Hedef", Vector3.zero);
+            Shapes.Cylinder(new Vector3(0f, 25f, 0f), new Vector3(0.6f, 25f, 0.6f), Color.white, lit: false, parent: beacon);
+            Shapes.Cylinder(new Vector3(0f, 0.05f, 0f), new Vector3(DoorRadius * 2f, 0.04f, DoorRadius * 2f), Color.white, lit: false, parent: beacon);
+            var icon = Shapes.Cube(new Vector3(0f, 2.4f, 0f), Vector3.one * 0.6f, Color.white, lit: false, parent: beacon);
+            icon.name = "Ikon";
+            Bike.SetLayerRecursive(beacon.gameObject, EveWorld.PlayerLayer);
+        }
+
+        void BuildGps()
+        {
+            var go = new GameObject("GPS");
+            go.layer = EveWorld.PlayerLayer;
+            gps = go.AddComponent<LineRenderer>();
+            gps.sharedMaterial = Mats.Unlit(new Color(0.25f, 0.75f, 1f));
+            gps.widthMultiplier = 0.9f;
+            gps.numCornerVertices = 3;
+            gps.numCapVertices = 2;
+            gps.alignment = LineAlignment.TransformZ;
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // lie flat on the street
+            gps.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            gps.positionCount = 0;
+        }
+
+        void BuildRestaurants()
+        {
+            int n = 0;
+            var used = new HashSet<int>();
+            if (roads.Loaded)
+            {
+                foreach (var p in roads.Places)
+                {
+                    if (p.kind == "cafe") continue;
+                    var poi = new Vector3(p.x, 0f, p.z);
+                    int node = roads.Nearest(poi);
+                    if (node < 0 || used.Contains(node)) continue;
+                    if (Vector3.Distance(roads.Pos(node), poi) > 40f) continue;
+                    used.Add(node);
+                    Vector3 door = Vector3.MoveTowards(roads.Pos(node), poi, 3f);   // sidewalk in front of the shop
+                    string street = roads.StreetName(node);
+                    restaurants.Add(new Place
+                    {
+                        Name = RestaurantNames[n % RestaurantNames.Length],
+                        Address = string.IsNullOrEmpty(street) ? "Karagümrük" : street,
+                        Door = door, Node = node
+                    });
+                    n++;
+                    if (restaurants.Count >= 40) break;
+                }
+            }
+            // Not enough real food places nearby: use named streets.
+            while (restaurants.Count < 8 && roads.Loaded)
+            {
+                int node = roads.RandomStreetNode(Vector3.zero, 50f, 900f, rng);
+                restaurants.Add(new Place { Name = RestaurantNames[n++ % RestaurantNames.Length], Address = roads.StreetName(node), Door = roads.Pos(node), Node = node });
+            }
+            if (restaurants.Count == 0)
+                restaurants.Add(new Place { Name = RestaurantNames[0], Address = "Karagümrük", Door = new Vector3(40f, 0f, 40f), Node = -1 });
+        }
+
+        float StreetHeading(int node)
+        {
+            if (node < 0 || roads.Neighbors[node].Count == 0) return 0f;
+            Vector3 d = roads.Pos(roads.Neighbors[node][0]) - roads.Pos(node);
+            return Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+        }
+
+        // ---------------- round ----------------
 
         protected override void ResetRound()
         {
-            moto.Place(new Vector3(-2.5f, 0f, -150f), 0f);
             shiftLeft = ShiftSeconds;
             delivered = 0;
-            late = 0;
-            crashCooldown = 0f;
             toast = null;
+            if (!courier.Riding) { courier.Mount(bike); bike.Ridden = true; }
+            if (ready) PlaceOnStreet(spawn, bike.transform.eulerAngles.y);
             NewOrder();
-            SnapCamera();
         }
 
         void NewOrder()
         {
-            restaurant = city.Restaurants[Random.Range(0, city.Restaurants.Count)];
+            Vector3 from = bike != null ? bike.transform.position : Vector3.zero;
+            // Prefer a restaurant 150-900 m away
+            Place pick = null;
+            for (int i = 0; i < 30 && pick == null; i++)
+            {
+                var r = restaurants[rng.Next(restaurants.Count)];
+                float d = Flat(r.Door - from).magnitude;
+                if (d > 120f && d < 900f) pick = r;
+            }
+            restaurant = pick ?? restaurants[rng.Next(restaurants.Count)];
             customer = null;
             step = Step.ToRestaurant;
-            SetBeacon(restaurant.DoorPos, beaconPickup);
+            SetBeacon(restaurant, pickupMat);
+            gpsTimer = 0f;
         }
 
-        void SetBeacon(Vector3 pos, Material m)
+        Place NewCustomer()
         {
-            beacon.position = new Vector3(pos.x, 0.16f, pos.z);
+            int node = roads.Loaded ? roads.RandomStreetNode(restaurant.Door, 200f, 1100f, rng) : -1;
+            Vector3 p = node >= 0 ? roads.Pos(node) : restaurant.Door + new Vector3(150f, 0f, 120f);
+            // Door: a few meters to the side of the street center (the sidewalk)
+            if (node >= 0 && roads.Neighbors[node].Count > 0)
+            {
+                Vector3 along = (roads.Pos(roads.Neighbors[node][0]) - p).normalized;
+                Vector3 side = Vector3.Cross(Vector3.up, along) * (rng.Next(2) == 0 ? 1f : -1f);
+                p += side * 3.5f;
+            }
+            string street = node >= 0 ? roads.StreetName(node) : "";
+            if (string.IsNullOrEmpty(street)) street = "Sokak";
+            return new Place { Name = street + " No: " + rng.Next(1, 90), Address = street, Door = p, Node = node };
+        }
+
+        void SetBeacon(Place p, Material m)
+        {
+            p.Snapped = false;
+            beacon.position = new Vector3(p.Door.x, streetY, p.Door.z);
             foreach (var r in beacon.GetComponentsInChildren<Renderer>()) r.sharedMaterial = m;
-            foreach (var r in arrow.GetComponentsInChildren<Renderer>()) r.sharedMaterial = m;
+            gps.sharedMaterial = m == pickupMat ? Mats.Unlit(new Color(1f, 0.8f, 0.2f)) : Mats.Unlit(new Color(0.25f, 1f, 0.55f));
         }
 
-        protected override void Tick(float dt)
+        void PlaceOnStreet(Vector3 pos, float yaw)
         {
-            shiftLeft -= dt;
-            if (shiftLeft <= 0f) { shiftLeft = 0f; GameOver(true); return; }
+            EveWorld.Ground(pos, out var g);
+            streetY = g.y;
+            bike.Body.isKinematic = false;
+            bike.Reset(g, yaw);
+            if (!courier.Riding) courier.Teleport(g + bike.transform.right * -1f + Vector3.up * 0.1f, yaw);
+            rig.Target = courier.Riding ? bike.transform : courier.transform;
+            rig.VehicleMode = courier.Riding;
+            rig.SnapBehind();
+        }
 
-            ReadControls(out float throttle, out float steer);
-            bool crash = moto.Drive(throttle, steer, dt, city);
-            crashCooldown -= dt;
-            if (crash && crashCooldown <= 0f)
-            {
-                crashCooldown = 1f;
-                Sfx.Hit();
-                Juice.Shake(0.35f, 0.3f);
-                Score = Mathf.Max(0, Score - 5);
-                ShowToast("Dikkat! -5");
-            }
+        // ---------------- frame ----------------
 
-            // Order logic
-            Vector3 target = step == Step.ToRestaurant ? restaurant.DoorPos : customer.DoorPos;
-            if (step == Step.ToCustomer)
+        protected override void Update()
+        {
+            base.Update();
+            if (bike == null) return;
+
+            // World loading: keep everything frozen until the street under the spawn exists.
+            if (!ready)
             {
-                orderTimeLeft -= dt;
-            }
-            float dist = Flat(target - moto.Root.position).magnitude;
-            if (dist < ArriveRadius && moto.Kmh < 20f)
-            {
-                if (step == Step.ToRestaurant)
+                readyTimer += Time.unscaledDeltaTime;
+                bool loadedEnough = !world.HasToken || world.Progress >= 97f || readyTimer > 45f;
+                if (loadedEnough && readyTimer > 3f && EveWorld.Ground(spawn, out var g))
                 {
-                    customer = city.Homes[Random.Range(0, city.Homes.Count)];
-                    float route = Flat(customer.DoorPos - restaurant.DoorPos).magnitude;
-                    orderTime = 20f + route / 7f;
-                    orderTimeLeft = orderTime;
-                    step = Step.ToCustomer;
-                    SetBeacon(customer.DoorPos, beaconDrop);
-                    Sfx.PowerUp();
-                    Juice.Pop(moto.Root, 0.15f);
-                    ShowToast("Sipariş alındı: " + restaurant.Name);
+                    ready = true;
+                    spawn = g;
+                    PlaceOnStreet(spawn, bike.transform.eulerAngles.y);
                 }
-                else
+                else if (readyTimer > 70f)
                 {
-                    int pts = 50 + Mathf.Max(0, Mathf.RoundToInt(orderTimeLeft * 2f));
-                    if (orderTimeLeft < 0f) { pts = 20; late++; }
-                    Score += pts;
-                    delivered++;
-                    Sfx.Coin();
-                    Juice.Burst(customer.DoorPos + Vector3.up, Palette.Accent, 30, 5f, 0.25f);
-                    Juice.FloatText("+" + pts, customer.DoorPos + Vector3.up * 2.5f, Palette.Accent);
-                    ShowToast(orderTimeLeft < 0f ? "Geç kaldın ama teslim edildi +" + pts : "Teslim edildi! Bahşiş dahil +" + pts);
-                    NewOrder();
+                    ready = true;   // give up waiting: drop from above
+                    PlaceOnStreet(spawn + Vector3.up * 40f, bike.transform.eulerAngles.y);
                 }
             }
 
-            UpdateBeaconAndArrow(target);
-            UpdateCamera(dt, false);
+            bool playing = Current == State.Playing;
+            Cursor.lockState = playing ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.visible = !playing;
+
+            if (fade > 0f) fade = Mathf.Max(0f, fade - Time.unscaledDeltaTime * 1.5f);
         }
 
         protected override void IdleTick(float dt)
         {
-            if (cam == null || moto == null) return;
-            UpdateBeaconAndArrow(beacon.position);
-            UpdateCamera(dt, true);
-        }
-
-        void ReadControls(out float throttle, out float steer)
-        {
-            float kt = 0f, ks = 0f;
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) kt += 1f;
-            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.Space)) kt -= 1f;
-            if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) ks -= 1f;
-            if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) ks += 1f;
-
-            ReadTouch();
-            throttle = Mathf.Clamp(kt + tThrottle + Inputs.SimMove.y, -1f, 1f);
-            steer = Mathf.Clamp(ks + tSteer + Inputs.SimMove.x, -1f, 1f);
-        }
-
-        // ---- on-screen buttons (multi-touch) ----
-        Rect BtnLeft => new Rect(Hud.U * 30f, Hud.U * 30f, Hud.U * 130f, Hud.U * 130f);
-        Rect BtnRight => new Rect(Hud.U * 180f, Hud.U * 30f, Hud.U * 130f, Hud.U * 130f);
-        Rect BtnGas => new Rect(Screen.width - Hud.U * 160f, Hud.U * 30f, Hud.U * 130f, Hud.U * 160f);
-        Rect BtnBrake => new Rect(Screen.width - Hud.U * 310f, Hud.U * 30f, Hud.U * 130f, Hud.U * 110f);
-        bool ShowTouch => Input.touchSupported || Application.isMobilePlatform;
-
-        void ReadTouch()
-        {
-            tThrottle = 0f;
-            tSteer = 0f;
-            for (int i = 0; i < Input.touchCount; i++) Press(Input.GetTouch(i).position);
-            if (Input.touchCount == 0 && Input.GetMouseButton(0) && ShowTouch) Press(Input.mousePosition);
-        }
-
-        void Press(Vector2 p)
-        {
-            if (BtnLeft.Contains(p)) tSteer -= 1f;
-            if (BtnRight.Contains(p)) tSteer += 1f;
-            if (BtnGas.Contains(p)) tThrottle += 1f;
-            if (BtnBrake.Contains(p)) tThrottle -= 1f;
-        }
-
-        void UpdateBeaconAndArrow(Vector3 target)
-        {
-            beacon.Rotate(0f, 60f * Time.deltaTime, 0f);
-            Vector3 head = moto.Root.position + Vector3.up * 2.3f;
-            arrow.position = head;
-            Vector3 dir = Flat(target - moto.Root.position);
-            if (dir.sqrMagnitude > 0.01f) arrow.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
-            arrow.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 6f) * 0.08f);
-        }
-
-        void SnapCamera()
-        {
-            if (cam == null) return;
-            cam.transform.position = moto.Root.position - moto.Forward * 6.5f + Vector3.up * 2.6f;
-            cam.transform.LookAt(moto.Root.position + Vector3.up * 1.2f + moto.Forward * 3f);
-        }
-
-        void UpdateCamera(float dt, bool idle)
-        {
-            Vector3 focus = moto.Root.position + Vector3.up * 1.2f;
-            Vector3 desired;
-            if (idle)
+            if (rig == null) return;
+            if (!ready || Current == State.Menu)
             {
-                orbit += dt * 12f;
-                Vector3 off = Quaternion.Euler(0f, orbit, 0f) * new Vector3(0f, 0f, -7.5f);
-                desired = focus + off + Vector3.up * 1.6f;
-                cam.transform.position = Vector3.SmoothDamp(cam.transform.position, desired, ref camVel, 0.4f);
-                cam.transform.LookAt(focus);
+                rig.Orbit(spawn + Vector3.up * 5f, 70f, 40f, dt);
                 return;
             }
-            float back = 6.2f + moto.Kmh * 0.03f;
-            desired = moto.Root.position - moto.Forward * back + Vector3.up * (2.4f + moto.Kmh * 0.008f);
-            desired = KeepCameraOnStreet(moto.Root.position, desired);
-            cam.transform.position = Vector3.SmoothDamp(cam.transform.position, desired, ref camVel, 0.18f);
-            cam.transform.position = KeepCameraOnStreet(moto.Root.position, cam.transform.position);
-            cam.transform.LookAt(focus + moto.Forward * 3.5f);
-            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, 60f + moto.Kmh * 0.18f, dt * 3f);
+            rig.Tick(Vector2.zero, false, 0f, false, dt);
         }
 
-        /// <summary>Pulls the camera toward the bike (and up) until it is above a street, so it never enters a building.</summary>
-        Vector3 KeepCameraOnStreet(Vector3 bike, Vector3 camPos)
+        protected override void Tick(float dt)
         {
-            const float Margin = 1.8f; // bay windows (cumba) and awnings stick out over the sidewalk
-            if (city.IsClear(camPos, Margin)) return camPos;
-            for (float t = 0.9f; t > 0.05f; t -= 0.1f)
+            if (!ready)
             {
-                Vector3 p = Vector3.Lerp(bike, camPos, t);
-                if (city.IsClear(p, Margin)) return new Vector3(p.x, camPos.y + (1f - t) * 2.5f, p.z);
+                rig.Orbit(spawn + Vector3.up * 5f, 70f, 40f, dt);
+                return;
             }
-            // Very tight spot: hover above the bike.
-            return new Vector3(bike.x, bike.y + 4.5f, bike.z) - moto.Forward * 1.2f;
+
+            shiftLeft -= dt;
+            if (shiftLeft <= 0f) { GameOver(true); return; }
+
+            Vector2 mv = input.Move;
+            Vector3 playerPos = courier.Riding ? bike.transform.position : courier.transform.position;
+            streetY = Mathf.Lerp(streetY, playerPos.y, dt * 2f);
+
+            if (courier.Riding)
+            {
+                bike.SetInput(input.Throttle, input.Brake, mv.x, input.Handbrake);
+                courier.TickRiding(dt);
+                if (input.InteractPressed && bike.Kmh < 12f) GetOff();
+                if (input.HornPressed) bike.Horn();
+            }
+            else
+            {
+                bike.SetInput(0f, 0f, 0f, true);
+                courier.Walk(mv, input.Sprint, cam.transform, dt);
+                if (input.InteractPressed)
+                {
+                    if (NearDoor()) EnterDoor();
+                    else if (Vector3.Distance(courier.transform.position, bike.transform.position) < 2.6f) GetOn();
+                }
+            }
+
+            if (input.ResetPressed) BackToStreet();
+
+            // order timer + door height refinement
+            if (step == Step.ToCustomer) orderLeft -= dt;
+            var target = step == Step.ToRestaurant ? restaurant : customer;
+            if (!target.Snapped && Flat(target.Door - playerPos).magnitude < 150f)
+            {
+                if (EveWorld.StreetGround(target.Door, streetY, out var g))
+                {
+                    target.Door = g;
+                    target.Snapped = true;
+                    beacon.position = g;
+                }
+            }
+            beacon.Find("Ikon").Rotate(0f, 90f * dt, 0f, Space.World);
+
+            gpsTimer -= dt;
+            if (gpsTimer <= 0f) { gpsTimer = 1.2f; UpdateGps(playerPos, target); }
+
+            rig.Target = courier.Riding ? bike.transform : courier.transform;
+            rig.VehicleMode = courier.Riding;
+            rig.Height = courier.Riding ? 1.5f : 1.55f;
+            rig.Distance = courier.Riding ? 5.2f : 3.6f;
+            rig.Tick(input.Look, input.LookIsMouse, courier.Riding ? Mathf.Abs(bike.Speed) : courier.Speed, input.RecenterPressed, dt);
+        }
+
+        void GetOn()
+        {
+            courier.Mount(bike);
+            bike.Ridden = true;
+            Sfx.Click();
+            rig.SnapBehind();
+        }
+
+        void GetOff()
+        {
+            bike.Ridden = false;
+            courier.Dismount(bike);
+            Sfx.Click();
+        }
+
+        void BackToStreet()
+        {
+            Vector3 p = courier.Riding ? bike.transform.position : courier.transform.position;
+            int node = roads.Loaded ? roads.Nearest(p) : -1;
+            Vector3 dst = node >= 0 ? roads.Pos(node) : spawn;
+            if (!courier.Riding) GetOn();
+            PlaceOnStreet(dst, node >= 0 ? StreetHeading(node) : bike.transform.eulerAngles.y);
+            ShowToast("Sokağa geri dönüldü");
+        }
+
+        bool NearDoor()
+        {
+            var t = step == Step.ToRestaurant ? restaurant : customer;
+            return Flat(t.Door - courier.transform.position).magnitude < DoorRadius + 0.6f;
+        }
+
+        void EnterDoor()
+        {
+            fade = 1f;
+            if (step == Step.ToRestaurant)
+            {
+                customer = NewCustomer();
+                float route = Flat(customer.Door - restaurant.Door).magnitude;
+                orderTime = 45f + route / 6f;
+                orderLeft = orderTime;
+                step = Step.ToCustomer;
+                SetBeacon(customer, dropMat);
+                gpsTimer = 0f;
+                Sfx.PowerUp();
+                ShowToast(restaurant.Name + ": siparişin hazır, müşteri bekliyor!");
+            }
+            else
+            {
+                int pts = 60 + Mathf.Max(0, Mathf.RoundToInt(orderLeft * 1.5f));
+                if (orderLeft < 0f) pts = 25;
+                Score += pts;
+                delivered++;
+                Sfx.Coin();
+                Juice.FloatText("+" + pts, customer.Door + Vector3.up * 2.2f, Palette.Accent);
+                ShowToast(orderLeft < 0f ? "Geç kaldın ama müşteri kabul etti +" + pts : "Teslim edildi! Bahşiş dahil +" + pts);
+                NewOrder();
+            }
+        }
+
+        void UpdateGps(Vector3 from, Place target)
+        {
+            if (!roads.Loaded) { gps.positionCount = 0; return; }
+            int a = roads.Nearest(from), b = target.Node >= 0 ? target.Node : roads.Nearest(target.Door);
+            var route = roads.Route(a, b);
+            var pts = new List<Vector3>(route.Count + 2) { from };
+            float y = streetY;
+            foreach (int node in route)
+            {
+                Vector3 p = roads.Pos(node);
+                if (EveWorld.StreetGround(p, y, out var g)) y = g.y;
+                pts.Add(new Vector3(p.x, y + 0.35f, p.z));
+            }
+            pts.Add(new Vector3(target.Door.x, y + 0.35f, target.Door.z));
+            pts[0] = new Vector3(from.x, from.y + 0.35f, from.z);
+            gps.positionCount = pts.Count;
+            gps.SetPositions(pts.ToArray());
         }
 
         void ShowToast(string text)
         {
             toast = text;
-            toastTime = 2.5f;
+            toastTime = 3f;
         }
 
         static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
 
+        // ---------------- HUD ----------------
+
         protected override void DrawHud()
         {
+            if (!ready)
+            {
+                DrawLoading();
+                return;
+            }
             base.DrawHud();
             int m = Mathf.FloorToInt(shiftLeft / 60f), s = Mathf.FloorToInt(shiftLeft % 60f);
-            Hud.Text("Vardiya: " + m + ":" + s.ToString("00") + "   Teslimat: " + delivered, 24, 112, 0.75f);
+            Hud.Text("Vardiya " + m + ":" + s.ToString("00") + "   Teslimat: " + delivered, 24, 112, 0.7f);
 
-            // Order panel (top center)
-            string line1, line2;
-            Vector3 target = step == Step.ToRestaurant ? restaurant.DoorPos : customer.DoorPos;
-            int dist = Mathf.RoundToInt(Flat(target - moto.Root.position).magnitude);
+            var t = step == Step.ToRestaurant ? restaurant : customer;
+            Vector3 p = courier.Riding ? bike.transform.position : courier.transform.position;
+            int dist = Mathf.RoundToInt(Flat(t.Door - p).magnitude);
+            float top = -Screen.height * 0.5f / Hud.U;
             if (step == Step.ToRestaurant)
             {
-                line1 = "SİPARİŞİ AL: " + restaurant.Name;
-                line2 = "Restorana " + dist + " m";
+                Hud.Center("SİPARİŞİ AL: " + restaurant.Name, top + 50f, 0.85f, Palette.Accent);
+                Hud.Center(restaurant.Address + "  •  " + dist + " m", top + 90f, 0.65f);
             }
             else
             {
-                line1 = "TESLİM ET: " + customer.Name + " (" + customer.District + ")";
-                line2 = dist + " m  •  Kalan süre: " + Mathf.CeilToInt(Mathf.Max(0f, orderTimeLeft)) + " sn";
-            }
-            Hud.Center(line1, -Screen.height * 0.5f / Hud.U + 60f, 0.8f, step == Step.ToRestaurant ? Palette.Accent : Palette.Good);
-            Hud.Center(line2, -Screen.height * 0.5f / Hud.U + 100f, 0.7f);
-            if (step == Step.ToCustomer)
-            {
-                float k = Mathf.Clamp01(orderTimeLeft / Mathf.Max(1f, orderTime));
-                float barW = 360f;
-                float x = (Screen.width / Hud.U - barW) * 0.5f;
-                Hud.Bar(x, 128f, barW, 10f, k, k > 0.3f ? Palette.Good : Palette.Danger);
+                Hud.Center("TESLİM ET: " + customer.Name, top + 50f, 0.85f, Palette.Good);
+                Hud.Center(dist + " m  •  Kalan süre " + Mathf.CeilToInt(Mathf.Max(0f, orderLeft)) + " sn", top + 90f, 0.65f);
+                float k = Mathf.Clamp01(orderLeft / Mathf.Max(1f, orderTime));
+                float w = 380f;
+                Hud.Bar((Screen.width / Hud.U - w) * 0.5f, 118f, w, 8f, k, k > 0.3f ? Palette.Good : Palette.Danger);
             }
 
-            // Speedometer
-            Hud.TextRight(Mathf.RoundToInt(moto.Kmh) + " km/sa", 30, Screen.height / Hud.U - (ShowTouch ? 230f : 80f), 1.3f);
+            // context prompt
+            string prompt = null;
+            if (courier.Riding)
+            {
+                if (dist < 25f) prompt = bike.Kmh < 12f ? "[E] Motordan in ve yürüyerek kapıya git" : "Yavaşla ve motordan in";
+            }
+            else
+            {
+                if (NearDoor()) prompt = step == Step.ToRestaurant ? "[E] Restorana gir" : "[E] Kapıyı çal ve teslim et";
+                else if (Vector3.Distance(courier.transform.position, bike.transform.position) < 2.6f) prompt = "[E] Motora bin";
+            }
+            if (prompt != null) Hud.Center(prompt, 170f, 0.8f, Color.white);
+
+            if (courier.Riding) Hud.TextRight(Mathf.RoundToInt(bike.Kmh) + " km/sa", 30, Screen.height / Hud.U - 90f, 1.4f);
 
             if (toast != null && toastTime > 0f)
             {
                 toastTime -= Time.unscaledDeltaTime;
-                Hud.Center(toast, 140f, 0.85f, Palette.Accent);
+                Hud.Center(toast, 120f, 0.8f, Palette.Accent);
             }
 
-            if (ShowTouch) DrawTouchButtons();
+            if (fade > 0f) Hud.Overlay(new Color(0f, 0f, 0f, Mathf.Clamp01(fade)));
+            Hud.Text("Harita verisi © OpenStreetMap katkıcıları", 24, Screen.height / Hud.U - 40f, 0.45f, new Color(1f, 1f, 1f, 0.6f));
         }
 
-        void DrawTouchButtons()
+        void DrawLoading()
         {
-            Btn(BtnLeft, "◀", tSteer < 0f);
-            Btn(BtnRight, "▶", tSteer > 0f);
-            Btn(BtnGas, "GAZ", tThrottle > 0f);
-            Btn(BtnBrake, "FREN", tThrottle < 0f);
+            Hud.Overlay(new Color(0f, 0f, 0f, 0.35f));
+            if (!world.HasToken)
+            {
+                Hud.Center("Şehir anahtarı (CESIUM_ION_TOKEN) eklenmemiş", 0f, 0.9f, Palette.Danger);
+                return;
+            }
+            Hud.Center("İstanbul yükleniyor... %" + Mathf.RoundToInt(world.Progress), 160f, 0.9f);
+            Hud.Bar((Screen.width / Hud.U - 400f) * 0.5f, Screen.height / Hud.U * 0.5f + 200f, 400f, 10f, world.Progress / 100f, Palette.Accent);
         }
 
-        // Converts a bottom-left screen rect to GUI coordinates (top-left) and draws it.
-        static void Btn(Rect r, string label, bool active)
+        protected override void OnGUI()
         {
-            var g = new Rect(r.x, Screen.height - r.y - r.height, r.width, r.height);
-            var old = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, active ? 0.45f : 0.22f);
-            GUI.DrawTexture(g, Texture2D.whiteTexture);
-            GUI.color = old;
-            var st = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(34 * Hud.U), fontStyle = FontStyle.Bold };
-            st.normal.textColor = Color.white;
-            GUI.Label(g, label, st);
+            // Menu over a still-loading city: show progress under the menu too.
+            base.OnGUI();
+            if (Current == State.Menu && !ready && world != null && world.HasToken)
+                Hud.Center("Şehir yükleniyor %" + Mathf.RoundToInt(world.Progress), 250f, 0.6f, Palette.Accent);
         }
     }
 }

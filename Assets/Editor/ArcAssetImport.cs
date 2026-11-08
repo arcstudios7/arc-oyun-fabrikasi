@@ -7,7 +7,7 @@ using UnityEditor;
 public class ArcAssetImport : AssetPostprocessor
 {
     // Bump when the rules below change: forces Unity to re-import cached textures.
-    public override uint GetVersion() => 3;
+    public override uint GetVersion() => 4;
 
     void OnPreprocessTexture()
     {
@@ -54,5 +54,37 @@ public class ArcAssetImport : AssetPostprocessor
             ti.maxTextureSize = 512;
             ti.textureCompression = TextureImporterCompression.Compressed;
         }
+    }
+
+    // ---------- Mixamo courier (Resources/Kurye) ----------
+
+    static bool IsKurye(string path) => path.Replace('\\', '/').Contains("/Resources/Kurye/");
+
+    void OnPreprocessModel()
+    {
+        if (!IsKurye(assetPath)) return;
+        var mi = (ModelImporter)assetImporter;
+        mi.animationType = ModelImporterAnimationType.Human;
+        mi.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+        mi.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription;
+        bool character = System.IO.Path.GetFileNameWithoutExtension(assetPath).ToLowerInvariant() == "kurye";
+        mi.importAnimation = !character;
+    }
+
+    void OnPreprocessAnimation()
+    {
+        if (!IsKurye(assetPath)) return;
+        var mi = (ModelImporter)assetImporter;
+        var clips = mi.defaultClipAnimations;
+        foreach (var c in clips)
+        {
+            c.loopTime = true;
+            c.lockRootRotation = true;
+            c.keepOriginalOrientation = true;
+            c.lockRootHeightY = true;
+            c.keepOriginalPositionY = true;
+            c.lockRootPositionXZ = true;
+        }
+        mi.clipAnimations = clips;
     }
 }

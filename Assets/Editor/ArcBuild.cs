@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEditor.Animations;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -24,6 +25,8 @@ public static class ArcBuild
         EnsureRenderPipeline();
         EnsureMaterials();
         ReimportModels();
+        WriteSecrets();
+        BuildCourierAnimator();
         EnsureScene();
         ApplyPlayerSettings();
         AssetDatabase.SaveAssets();
@@ -48,6 +51,7 @@ public static class ArcBuild
         if (string.IsNullOrEmpty(path))
             path = target == BuildTarget.Android ? "build/Android/Oyun.apk"
                 : target == BuildTarget.StandaloneLinux64 ? "build/StandaloneLinux64/Oyun.x86_64"
+                : target == BuildTarget.StandaloneWindows64 ? "build/Windows/Oyun.exe"
                 : "build/" + target + "/Oyun";
 
         Debug.Log("[ARC] Build başlıyor: " + target + " → " + path);
@@ -73,6 +77,7 @@ public static class ArcBuild
     static bool Build(BuildTarget target, string path)
     {
         Prepare();
+        ApplyQuality(target);
         if (target == BuildTarget.Android) EditorUserBuildSettings.buildAppBundle = false;
 
         var options = new BuildPlayerOptions
@@ -94,6 +99,99 @@ public static class ArcBuild
                 Debug.LogError("[ARC] " + msg.content);
         }
         return summary.result == BuildResult.Succeeded;
+    }
+
+    /// <summary>PC gets the high-end settings; web / phones keep the lighter defaults.</summary>
+    static void ApplyQuality(BuildTarget target)
+    {
+        var rp = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>("Assets/Settings/ArcURP.asset");
+        if (rp == null) return;
+        bool pc = target == BuildTarget.StandaloneWindows64 || target == BuildTarget.StandaloneLinux64 || target == BuildTarget.StandaloneOSX;
+        rp.msaaSampleCount = pc ? 4 : 1;
+        rp.shadowDistance = pc ? 200f : 90f;
+        rp.shadowCascadeCount = pc ? 4 : 2;
+        var so = new SerializedObject(rp);
+        SetInt(so, "m_MainLightShadowmapResolution", pc ? 4096 : 2048);
+        SetInt(so, "m_AdditionalLightsShadowmapResolution", pc ? 2048 : 1024);
+        SetBool(so, "m_SupportsHDR", true);
+        so.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(rp);
+        AssetDatabase.SaveAssets();
+        Debug.Log("[ARC] Kalite: " + (pc ? "PC (yüksek)" : "web/telefon"));
+    }
+
+    /// <summary>Build-time secrets (from GitHub Actions env) → Resources text files, never committed.</summary>
+    static void WriteSecrets()
+    {
+        string token = Environment.GetEnvironmentVariable("CESIUM_ION_TOKEN");
+        if (string.IsNullOrEmpty(token)) return;
+        EnsureFolder("Assets", "Resources");
+        EnsureFolder("Assets/Resources", "Harita");
+        System.IO.File.WriteAllText("Assets/Resources/Harita/cesium_token.txt", token.Trim());
+        AssetDatabase.ImportAsset("Assets/Resources/Harita/cesium_token.txt", ImportAssetOptions.ForceUpdate);
+        Debug.Log("[ARC] Cesium anahtarı eklendi.");
+    }
+
+    /// <summary>
+    /// Builds Resources/Kurye/KuryeAnimator.controller from the Mixamo files in Resources/Kurye
+    /// (file names containing idle / walk / run / sit|ride|drive). Speed blend tree + Riding state.
+    /// </summary>
+    static void BuildCourierAnimator()
+    {
+        const string dir = "Assets/Resources/Kurye";
+        if (!AssetDatabase.IsValidFolder(dir)) return;
+
+        AnimationClip Find(params string[] keys)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { dir }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                string file = System.IO.Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+                if (file == "kurye" || !keys.Any(k => file.Contains(k))) continue;
+                foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path))
+                    if (o is AnimationClip c && !c.name.StartsWith("__preview__")) return c;
+            }
+            return null;
+        }
+
+        var idle = Find("idle", "bekle");
+        var walk = Find("walk", "yuru");
+        var run = Find("run", "kos");
+        var ride = Find("sit", "ride", "drive", "motor", "otur");
+        if (idle == null && walk == null)
+        {
+            Debug.LogWarning("[ARC] Kurye animasyonları bulunamadı (Resources/Kurye).");
+            return;
+        }
+
+        string ctrlPath = dir + "/KuryeAnimator.controller";
+        AssetDatabase.DeleteAsset(ctrlPath);
+        var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ctrlPath);
+        ctrl.AddParameter("Speed", AnimatorControllerParameterType.Float);
+        ctrl.AddParameter("Riding", AnimatorControllerParameterType.Bool);
+        var sm = ctrl.layers[0].stateMachine;
+
+        var loco = ctrl.CreateBlendTreeInController("Hareket", out BlendTree tree, 0);
+        tree.blendType = BlendTreeType.Simple1D;
+        tree.blendParameter = "Speed";
+        tree.useAutomaticThresholds = false;
+        if (idle != null) tree.AddChild(idle, 0f);
+        if (walk != null) tree.AddChild(walk, 1.9f);
+        if (run != null) tree.AddChild(run, 5.6f);
+        sm.defaultState = loco;
+
+        var rideState = sm.AddState("Surus");
+        rideState.motion = ride != null ? ride : (idle != null ? idle : walk);
+        var toRide = loco.AddTransition(rideState);
+        toRide.hasExitTime = false;
+        toRide.duration = 0.2f;
+        toRide.AddCondition(AnimatorConditionMode.If, 0f, "Riding");
+        var toLoco = rideState.AddTransition(loco);
+        toLoco.hasExitTime = false;
+        toLoco.duration = 0.2f;
+        toLoco.AddCondition(AnimatorConditionMode.IfNot, 0f, "Riding");
+        AssetDatabase.SaveAssets();
+        Debug.Log("[ARC] Kurye animatörü: idle=" + (idle != null) + " walk=" + (walk != null) + " run=" + (run != null) + " ride=" + (ride != null));
     }
 
     // ---------- project preparation ----------
@@ -129,10 +227,12 @@ public static class ArcBuild
     /// </summary>
     static void ReimportModels()
     {
-        const string models = "Assets/Resources/PH/models";
-        if (!AssetDatabase.IsValidFolder(models)) return;
-        AssetDatabase.ImportAsset(models, ImportAssetOptions.ImportRecursive | ImportAssetOptions.ForceUpdate);
-        Debug.Log("[ARC] Modeller URP için yeniden içe aktarıldı.");
+        foreach (var folder in new[] { "Assets/Resources/PH/models", "Assets/Resources/Kurye", "Assets/Resources/Arac" })
+        {
+            if (!AssetDatabase.IsValidFolder(folder)) continue;
+            AssetDatabase.ImportAsset(folder, ImportAssetOptions.ImportRecursive | ImportAssetOptions.ForceUpdate);
+            Debug.Log("[ARC] URP için yeniden içe aktarıldı: " + folder);
+        }
     }
 
     static Material MakeMaterial(string path, string shaderName)
@@ -258,15 +358,15 @@ public static class ArcBuild
         PlayerSettings.defaultWebScreenWidth = portrait ? 540 : 960;
         PlayerSettings.defaultWebScreenHeight = portrait ? 960 : 540;
 
-        // The Arc helpers use the classic Input Manager (0 = Input Manager, 1 = Input System, 2 = Both).
+        // Arc helpers use the classic Input Manager, realistic games use the Input System → enable BOTH (2).
         var playerSettings = Resources.FindObjectsOfTypeAll<PlayerSettings>().FirstOrDefault();
         if (playerSettings != null)
         {
             var so = new SerializedObject(playerSettings);
             var prop = so.FindProperty("activeInputHandler");
-            if (prop != null && prop.intValue != 0)
+            if (prop != null && prop.intValue != 2)
             {
-                prop.intValue = 0;
+                prop.intValue = 2;
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
         }

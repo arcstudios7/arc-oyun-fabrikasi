@@ -11,6 +11,9 @@ namespace Arc
     public class ArcShot : MonoBehaviour
     {
         public static bool Active { get; private set; }
+
+        /// <summary>Optional: games that stream their world set this; screenshots wait until it returns true (max 120 s).</summary>
+        public static System.Func<bool> ReadyCheck;
         string dir;
 
         internal static void TryStart()
@@ -31,6 +34,13 @@ namespace Arc
         {
             System.IO.Directory.CreateDirectory(dir);
             yield return new WaitForSecondsRealtime(4f);
+            float waited = 0f;
+            while (ReadyCheck != null && !ReadyCheck() && waited < 120f)
+            {
+                waited += 1f;
+                yield return new WaitForSecondsRealtime(1f);
+            }
+            if (ReadyCheck != null) yield return new WaitForSecondsRealtime(8f); // let detail tiles stream in
             yield return Shot("01_menu");
 
             var game = FindFirstObjectByType<ArcGame>();

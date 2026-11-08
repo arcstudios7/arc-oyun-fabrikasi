@@ -5,7 +5,7 @@ namespace Game
     {
         public const string Title = "Eve Servis";      // shown on menu + as the app name
         public const string Slug = "eve-servis";        // lowercase a-z, 0-9 and '-' only (package id + save keys + web address)
-        public const string Version = "0.1";
+        public const string Version = "0.2";
         public const bool Portrait = false;             // true = vertical phone game, false = horizontal
     }
 }

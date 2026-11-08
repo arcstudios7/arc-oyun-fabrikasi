@@ -59,6 +59,22 @@ jobs:
       - name: Kaynakları indir (Poly Haven, CC0)
         run: python3 tools/polyhaven.py Assets/Scripts/Game/kaynaklar.json Assets/Resources/PH
 
+      - name: Gerçek sokak ağını önbellekten al
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/Harita/yollar.json
+          key: OSM-${{ hashFiles('Assets/Scripts/Game/harita.json', 'tools/osm_yollar.py') }}
+
+      - name: Gerçek sokak ağını indir (OpenStreetMap)
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        run: |
+          if [ ! -s Assets/Resources/Harita/yollar.json ]; then
+            python3 tools/osm_yollar.py Assets/Scripts/Game/harita.json Assets/Resources/Harita/yollar.json
+          else
+            echo "Önbellekten geldi."
+          fi
+
       - name: Unity'yi kur
         uses: RageAgainstThePixel/unity-setup@v3
         with:
@@ -76,6 +92,8 @@ jobs:
           password: ${{ secrets.UNITY_PASSWORD }}
 
       - name: Unity ile derle
+        env:
+          CESIUM_ION_TOKEN: ${{ secrets.CESIUM_ION_TOKEN }}
         uses: RageAgainstThePixel/unity-action@v4
         with:
           project-path: ${{ github.workspace }}
@@ -91,6 +109,82 @@ jobs:
         with:
           name: webgl
           path: build/WebGL/Oyun
+          if-no-files-found: error
+
+  windows:
+    name: 🪟 Windows (PC)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Win-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: Library-Win-
+
+      - name: Ücretsiz doku/model kaynaklarını önbellekten al
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/PH
+          key: PH-${{ hashFiles('Assets/Scripts/Game/kaynaklar.json', 'tools/polyhaven.py') }}
+
+      - name: Kaynakları indir (Poly Haven, CC0)
+        run: python3 tools/polyhaven.py Assets/Scripts/Game/kaynaklar.json Assets/Resources/PH
+
+      - name: Gerçek sokak ağını önbellekten al
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/Harita/yollar.json
+          key: OSM-${{ hashFiles('Assets/Scripts/Game/harita.json', 'tools/osm_yollar.py') }}
+
+      - name: Gerçek sokak ağını indir (OpenStreetMap)
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        run: |
+          if [ ! -s Assets/Resources/Harita/yollar.json ]; then
+            python3 tools/osm_yollar.py Assets/Scripts/Game/harita.json Assets/Resources/Harita/yollar.json
+          else
+            echo "Önbellekten geldi."
+          fi
+
+      - name: Unity'yi kur
+        uses: RageAgainstThePixel/unity-setup@v3
+        with:
+          version-file: None
+          unity-version: "6000.0.x"
+          build-targets: StandaloneWindows64
+          cache-installation: true
+
+      # Ücretsiz Personal lisans: .ulf dosyası gerekmez, Unity hesabıyla (e-posta + şifre) etkinleşir.
+      - name: Unity lisansını etkinleştir
+        uses: RageAgainstThePixel/activate-unity-license@v3
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Unity ile derle
+        env:
+          CESIUM_ION_TOKEN: ${{ secrets.CESIUM_ION_TOKEN }}
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: StandaloneWindows64
+          log-name: Windows-Build
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.BuildFromCommandLine
+            -customBuildTarget StandaloneWindows64
+            -customBuildPath ${{ github.workspace }}/build/Windows/Oyun.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: build/Windows
           if-no-files-found: error
 
   android:
@@ -129,6 +223,22 @@ jobs:
       - name: Kaynakları indir (Poly Haven, CC0)
         run: python3 tools/polyhaven.py Assets/Scripts/Game/kaynaklar.json Assets/Resources/PH
 
+      - name: Gerçek sokak ağını önbellekten al
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/Harita/yollar.json
+          key: OSM-${{ hashFiles('Assets/Scripts/Game/harita.json', 'tools/osm_yollar.py') }}
+
+      - name: Gerçek sokak ağını indir (OpenStreetMap)
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        run: |
+          if [ ! -s Assets/Resources/Harita/yollar.json ]; then
+            python3 tools/osm_yollar.py Assets/Scripts/Game/harita.json Assets/Resources/Harita/yollar.json
+          else
+            echo "Önbellekten geldi."
+          fi
+
       - name: Unity'yi kur
         uses: RageAgainstThePixel/unity-setup@v3
         with:
@@ -146,6 +256,8 @@ jobs:
           password: ${{ secrets.UNITY_PASSWORD }}
 
       - name: Unity ile derle
+        env:
+          CESIUM_ION_TOKEN: ${{ secrets.CESIUM_ION_TOKEN }}
         uses: RageAgainstThePixel/unity-action@v4
         with:
           project-path: ${{ github.workspace }}
@@ -190,6 +302,22 @@ jobs:
       - name: Kaynakları indir (Poly Haven, CC0)
         run: python3 tools/polyhaven.py Assets/Scripts/Game/kaynaklar.json Assets/Resources/PH
 
+      - name: Gerçek sokak ağını önbellekten al
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/Harita/yollar.json
+          key: OSM-${{ hashFiles('Assets/Scripts/Game/harita.json', 'tools/osm_yollar.py') }}
+
+      - name: Gerçek sokak ağını indir (OpenStreetMap)
+        if: ${{ hashFiles('Assets/Scripts/Game/harita.json') != '' }}
+        run: |
+          if [ ! -s Assets/Resources/Harita/yollar.json ]; then
+            python3 tools/osm_yollar.py Assets/Scripts/Game/harita.json Assets/Resources/Harita/yollar.json
+          else
+            echo "Önbellekten geldi."
+          fi
+
       - name: Unity'yi kur
         uses: RageAgainstThePixel/unity-setup@v3
         with:
@@ -206,6 +334,8 @@ jobs:
           password: ${{ secrets.UNITY_PASSWORD }}
 
       - name: Linux sürümünü derle
+        env:
+          CESIUM_ION_TOKEN: ${{ secrets.CESIUM_ION_TOKEN }}
         uses: RageAgainstThePixel/unity-action@v4
         with:
           project-path: ${{ github.workspace }}
@@ -249,8 +379,8 @@ jobs:
 
   publish:
     name: 🚀 Yayınla
-    needs: [webgl, android]
-    if: ${{ always() && needs.webgl.result == 'success' && (needs.android.result == 'success' || needs.android.result == 'skipped') }}
+    needs: [webgl, windows, android]
+    if: ${{ always() && (needs.webgl.result == 'success' || needs.windows.result == 'success') && needs.android.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -266,9 +396,16 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
 
       - uses: actions/download-artifact@v4
+        if: ${{ needs.webgl.result == 'success' }}
         with:
           name: webgl
           path: site
+
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.windows.result == 'success' }}
+        with:
+          name: windows
+          path: windows
 
       - uses: actions/download-artifact@v4
         if: ${{ needs.android.result == 'success' }}
@@ -280,7 +417,7 @@ jobs:
       # Her oyun kendi projesine yüklenir (arc-<slug>.pages.dev), böylece eski oyunlar da yayında kalır.
       - name: Cloudflare Pages'e yükle
         id: cf
-        if: ${{ env.CF_ENABLED == 'true' }}
+        if: ${{ env.CF_ENABLED == 'true' && needs.webgl.result == 'success' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -336,8 +473,10 @@ jobs:
           SLUG=$(grep -oP 'Slug\s*=\s*"\K[^"]+' Assets/Scripts/Game/GameInfo.cs || echo "oyun")
           TAG="${SLUG}-$(date -u +%Y%m%d-%H%M%S)"
 
-          (cd site && zip -qr "../${SLUG}-web.zip" .)
-          FILES="${SLUG}-web.zip"
+          FILES=""
+          if [ -d site ]; then (cd site && zip -qr "../${SLUG}-web.zip" .); FILES="${SLUG}-web.zip"; fi
+          WIN=""
+          if [ -d windows ]; then (cd windows && zip -qr "../${SLUG}-windows.zip" .); FILES="$FILES ${SLUG}-windows.zip"; WIN=1; fi
           APK=$(ls apk/*.apk 2>/dev/null | head -n1 || true)
           if [ -n "$APK" ]; then cp "$APK" "${SLUG}.apk"; FILES="$FILES ${SLUG}.apk"; fi
           if [ -n "$PAGE_URL" ]; then
@@ -371,6 +510,7 @@ jobs:
               echo "✅ **Oyunun hazır: ${TITLE}**"
               echo
               echo "$WEB_LINE"
+              if [ -n "$WIN" ]; then echo "🖥️ **PC (Windows):** ${REL_URL} (\`${SLUG}-windows.zip\` indir, klasöre çıkar, \`Oyun.exe\`yi çalıştır)"; fi
               if [ -n "$APK" ]; then echo "📱 **Android APK:** ${REL_URL} (\`${SLUG}.apk\` dosyasını indirip telefona kur — repo private olduğu için GitHub'a giriş yapmış olman gerekir)"; fi
               echo
               echo "Değişiklik istersen bu issue'ya \`/oyun <ne değişsin>\` yaz. Örnek: \`/oyun daha hızlı olsun ve can sistemi ekle\`"
@@ -382,7 +522,7 @@ jobs:
 
   notify-failure:
     name: ❌ Hata bildir
-    needs: [webgl, android, publish]
+    needs: [webgl, windows, android, publish]
     if: ${{ failure() && inputs.issue_number != '' }}
     runs-on: ubuntu-latest
     permissions:
