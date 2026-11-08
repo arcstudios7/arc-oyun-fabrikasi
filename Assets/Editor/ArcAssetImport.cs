@@ -7,7 +7,7 @@ using UnityEditor;
 public class ArcAssetImport : AssetPostprocessor
 {
     // Bump when the rules below change: forces Unity to re-import cached textures.
-    public override uint GetVersion() => 2;
+    public override uint GetVersion() => 3;
 
     void OnPreprocessTexture()
     {
@@ -21,14 +21,14 @@ public class ArcAssetImport : AssetPostprocessor
             ti.generateCubemap = TextureImporterGenerateCubemap.AutoCubemap;
             ti.mipmapEnabled = true;
             ti.sRGBTexture = false;
-            ti.maxTextureSize = 2048;
+            ti.maxTextureSize = 512;   // for cubemaps this is the size of EACH of the 6 faces
             ti.textureCompression = TextureImporterCompression.Compressed;
             // WebGL / phones: shared-exponent HDR format = half the size of RGBA16F, still HDR.
             foreach (var platform in new[] { "WebGL", "Android" })
             {
                 var ps = ti.GetPlatformTextureSettings(platform);
                 ps.overridden = true;
-                ps.maxTextureSize = 2048;
+                ps.maxTextureSize = 512;
                 ps.format = TextureImporterFormat.RGB9E5;
                 ti.SetPlatformTextureSettings(ps);
             }
