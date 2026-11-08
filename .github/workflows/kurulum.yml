@@ -29,6 +29,7 @@ jobs:
           HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
           HAS_CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           OK=true
           {
@@ -49,9 +50,13 @@ jobs:
           else row "Claude anahtarı" "⚠️ yok: issue ile otomatik oyun kapalı. Oyunları Claude sohbetinden yaptırabilirsin"; fi
 
           if [ "$HAS_CF_TOKEN" = "true" ] && [ "$HAS_CF_ACCOUNT" = "true" ]; then
-            if curl -s -H "Authorization: Bearer $CF_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify | grep -q '"active"'; then
-              row "Cloudflare (web linki)" "✅ token geçerli"
-            else row "Cloudflare (web linki)" "❌ CLOUDFLARE_API_TOKEN geçersiz"; OK=false; fi
+            USER_OK=$(curl -s -H "Authorization: Bearer $CF_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify | grep -c '"active"' || true)
+            ACC_OK=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify" | grep -c '"active"' || true)
+            PAGES_OK=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" | grep -c '"success":true' || true)
+            echo "user=$USER_OK account=$ACC_OK pages=$PAGES_OK"
+            if [ "$PAGES_OK" != "0" ]; then
+              row "Cloudflare (web linki)" "✅ token Pages projelerine erişebiliyor"
+            else row "Cloudflare (web linki)" "❌ token ya da Account ID hatalı (token: user=$USER_OK, account=$ACC_OK)"; OK=false; fi
           else
             row "Cloudflare (web linki)" "⚠️ ayarlı değil: oyunlar sadece Release'te zip/APK olarak gelir"
           fi
