@@ -55,6 +55,9 @@ namespace Game
             Tiles.maximumCachedBytes = 1024L * 1024L * 1024L;
             Tiles.createPhysicsMeshes = true;          // we drive and walk on the real geometry
             Tiles.showCreditsOnScreen = true;          // Google / Cesium attribution is required
+            // Diagnostics: tile selection statistics in Player.log for the CI screenshot run.
+            foreach (string a in System.Environment.GetCommandLineArgs())
+                if (a == "-arcshot") Tiles.logSelectionStats = true;
         }
 
         /// <summary>0..100 tile loading progress for the current view.</summary>

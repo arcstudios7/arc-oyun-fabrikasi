@@ -256,7 +256,7 @@ namespace Game
                 logTimer = 0f;
                 var cp = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
                 Debug.Log("[Eve] t=" + Time.realtimeSinceStartup.ToString("0") + " hazır=" + ready + " yükleme=%" + world.Progress.ToString("0")
-                          + " kamera=" + cp.ToString("0") + " fps=" + (1f / Mathf.Max(0.0001f, Time.smoothDeltaTime)).ToString("0"));
+                          + " kamera=" + cp.ToString("0") + " döşeme=" + (world.Tiles != null ? world.Tiles.transform.childCount : 0) + " fps=" + (1f / Mathf.Max(0.0001f, Time.smoothDeltaTime)).ToString("0"));
             }
 
             if (!ready)
