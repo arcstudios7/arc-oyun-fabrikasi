@@ -188,10 +188,11 @@ public static class ArcBuild
     {
         const string dir = "Assets/Resources/Kurye";
         if (!AssetDatabase.IsValidFolder(dir)) return;
+        var searchIn = new[] { dir, "Assets/Anim/Kurye" }.Where(AssetDatabase.IsValidFolder).ToArray();
 
         AnimationClip Find(params string[] keys)
         {
-            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { dir }))
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", searchIn))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 string file = System.IO.Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
@@ -217,6 +218,10 @@ public static class ArcBuild
         var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ctrlPath);
         ctrl.AddParameter("Speed", AnimatorControllerParameterType.Float);
         ctrl.AddParameter("Riding", AnimatorControllerParameterType.Bool);
+        // IK pass: hands grip the handlebar and feet rest on the footboard while riding (RideIK.cs).
+        var layers = ctrl.layers;
+        layers[0].iKPass = true;
+        ctrl.layers = layers;
         var sm = ctrl.layers[0].stateMachine;
 
         var loco = ctrl.CreateBlendTreeInController("Hareket", out BlendTree tree, 0);
@@ -273,9 +278,28 @@ public static class ArcBuild
     /// glTF models pick their shaders at import time. Re-import them now that URP is active,
     /// otherwise they keep built-in shaders and are invisible under URP.
     /// </summary>
+    /// <summary>
+    /// Mixamo embeds its textures in the FBX, where import size limits cannot reach them. Pull them out once into
+    /// Assets/Art/Kurye (outside Resources: only what the materials use is shipped) so ArcAssetImport can shrink them.
+    /// </summary>
+    static void ExtractCourierTextures()
+    {
+        const string model = "Assets/Resources/Kurye/Kurye.fbx";
+        const string dir = "Assets/Art/Kurye";
+        var mi = AssetImporter.GetAtPath(model) as ModelImporter;
+        if (mi == null) return;
+        if (!AssetDatabase.IsValidFolder("Assets/Art")) AssetDatabase.CreateFolder("Assets", "Art");
+        if (!AssetDatabase.IsValidFolder(dir)) AssetDatabase.CreateFolder("Assets/Art", "Kurye");
+        if (AssetDatabase.FindAssets("t:Texture2D", new[] { dir }).Length > 0) return;
+        bool ok = mi.ExtractTextures(dir);
+        AssetDatabase.Refresh();
+        Debug.Log("[ARC] Kurye dokuları çıkarıldı: " + ok + " (" + AssetDatabase.FindAssets("t:Texture2D", new[] { dir }).Length + " doku)");
+    }
+
     static void ReimportModels()
     {
-        foreach (var folder in new[] { "Assets/Resources/PH/models", "Assets/Resources/Kurye", "Assets/Resources/Arac" })
+        ExtractCourierTextures();
+        foreach (var folder in new[] { "Assets/Resources/PH/models", "Assets/Resources/Kurye", "Assets/Anim/Kurye", "Assets/Resources/Arac" })
         {
             if (!AssetDatabase.IsValidFolder(folder)) continue;
             AssetDatabase.ImportAsset(folder, ImportAssetOptions.ImportRecursive | ImportAssetOptions.ForceUpdate);

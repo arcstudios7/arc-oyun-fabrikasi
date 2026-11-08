@@ -7,13 +7,25 @@ using UnityEditor;
 public class ArcAssetImport : AssetPostprocessor
 {
     // Bump when the rules below change: forces Unity to re-import cached textures.
-    public override uint GetVersion() => 4;
+    public override uint GetVersion() => 5;
 
     void OnPreprocessTexture()
     {
         string p = assetPath.Replace('\\', '/');
-        if (!p.Contains("/Resources/PH/")) return;
         var ti = (TextureImporter)assetImporter;
+
+        // Courier textures extracted from Kurye.fbx (ArcBuild.ExtractCourierTextures).
+        if (p.Contains("/Art/Kurye/"))
+        {
+            string n = System.IO.Path.GetFileNameWithoutExtension(p).ToLowerInvariant();
+            if (n.Contains("normal")) ti.textureType = TextureImporterType.NormalMap;
+            ti.mipmapEnabled = true;
+            ti.maxTextureSize = 1024;   // a person on screen never needs more
+            ti.textureCompression = TextureImporterCompression.Compressed;
+            return;
+        }
+
+        if (!p.Contains("/Resources/PH/")) return;
 
         if (p.Contains("/PH/hdri/"))
         {
@@ -58,7 +70,13 @@ public class ArcAssetImport : AssetPostprocessor
 
     // ---------- Mixamo courier (Resources/Kurye) ----------
 
-    static bool IsKurye(string path) => path.Replace('\\', '/').Contains("/Resources/Kurye/");
+    // Character: Assets/Resources/Kurye/Kurye.fbx (shipped). Animations: Assets/Anim/Kurye/*.fbx (outside Resources, so
+    // only the animation clips the animator references go into the build, not the extra mesh copies inside them).
+    static bool IsKurye(string path)
+    {
+        string p = path.Replace('\\', '/');
+        return p.Contains("/Resources/Kurye/") || p.Contains("/Anim/Kurye/");
+    }
 
     void OnPreprocessModel()
     {
@@ -66,8 +84,9 @@ public class ArcAssetImport : AssetPostprocessor
         var mi = (ModelImporter)assetImporter;
         mi.animationType = ModelImporterAnimationType.Human;
         mi.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
-        mi.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription;
         bool character = System.IO.Path.GetFileNameWithoutExtension(assetPath).ToLowerInvariant() == "kurye";
+        mi.materialImportMode = character ? ModelImporterMaterialImportMode.ImportViaMaterialDescription : ModelImporterMaterialImportMode.None;
+        if (character) mi.materialSearch = ModelImporterMaterialSearch.Everywhere;   // finds the extracted textures in Assets/Art/Kurye
         mi.importAnimation = !character;
     }
 

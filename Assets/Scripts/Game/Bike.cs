@@ -26,6 +26,18 @@ namespace Game
         public Rigidbody Body { get; private set; }
         public Transform Seat { get; private set; }
         public Transform Visual { get; private set; }   // model, leaned in corners
+        public Transform GripL { get; private set; }
+        public Transform GripR { get; private set; }
+        public Transform FootL { get; private set; }
+        public Transform FootR { get; private set; }
+
+        /// <summary>Empty marker placed in Visual space, then re-parented (keeping its spot) to follow e.g. the handlebar.</summary>
+        Transform Mark(string name, Vector3 visualPos, Transform follow)
+        {
+            var t = Shapes.Group(name, visualPos, Visual);
+            if (follow != null) t.SetParent(follow, true);
+            return t;
+        }
         public float Speed => Vector3.Dot(Body.linearVelocity, transform.forward);
         public float Kmh => Mathf.Abs(Speed) * 3.6f;
         public bool Grounded { get; private set; }
@@ -71,6 +83,11 @@ namespace Game
             Visual = Shapes.Group("Gorunum", Vector3.zero, transform);
             Seat = Shapes.Group("Sele", new Vector3(0f, 0.86f, -0.22f), Visual);
             BikeModel.Build(this, Visual, out frontWheel, out rearWheel, out steerPivot);
+            // Where the rider's hands and feet go (RideIK). Grips turn with the handlebar.
+            GripL = Mark("TutamakSol", new Vector3(-0.3f, 1.31f, 0.48f), steerPivot);
+            GripR = Mark("TutamakSag", new Vector3(0.3f, 1.31f, 0.48f), steerPivot);
+            FootL = Mark("AyakSol", new Vector3(-0.17f, 0.3f, 0.12f), null);
+            FootR = Mark("AyakSag", new Vector3(0.17f, 0.3f, 0.12f), null);
             SetLayerRecursive(gameObject, EveWorld.PlayerLayer);
 
             engine = gameObject.AddComponent<AudioSource>();

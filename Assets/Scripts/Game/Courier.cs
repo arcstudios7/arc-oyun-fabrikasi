@@ -21,6 +21,7 @@ namespace Game
         public bool Riding { get; private set; }
 
         Animator anim;
+        RideIK ik;
         float verticalVel, animSpeed;
         static readonly int SpeedHash = Animator.StringToHash("Speed");
         static readonly int RidingHash = Animator.StringToHash("Riding");
@@ -57,6 +58,8 @@ namespace Game
                 anim.runtimeAnimatorController = Resources.Load<RuntimeAnimatorController>("Kurye/KuryeAnimator");
                 anim.applyRootMotion = false;
                 anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                ik = anim.gameObject.AddComponent<RideIK>();
+                ik.Anim = anim;
                 // Mixamo characters are ~1.8 m already; normalize just in case.
                 var b = Props.BoundsOf(Model.gameObject);
                 if (b.size.y > 0.5f && (b.size.y < 1.5f || b.size.y > 2.1f)) Model.localScale *= 1.78f / b.size.y;
@@ -158,6 +161,12 @@ namespace Game
             transform.SetParent(bike.Seat, false);
             transform.localPosition = new Vector3(0f, anim != null ? -0.48f : -0.86f, 0.08f); // sitting hips ~0.48 m above feet
             transform.localRotation = Quaternion.identity;
+            if (ik != null)
+            {
+                ik.LeftHand = bike.GripL; ik.RightHand = bike.GripR;
+                ik.LeftFoot = bike.FootL; ik.RightFoot = bike.FootR;
+                ik.Active = true;
+            }
             Animate(1f);
         }
 
@@ -165,6 +174,7 @@ namespace Game
         public void Dismount(Bike bike)
         {
             Riding = false;
+            if (ik != null) ik.Active = false;
             transform.SetParent(null, true);
             Vector3 side = bike.transform.position - bike.transform.right * 0.9f;
             EveWorld.StreetGround(side, bike.transform.position.y, out var ground);
