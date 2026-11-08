@@ -1,0 +1,54 @@
+name: 🎮 Oyun Fikri
+description: Fikrini yaz, Claude Unity ile oyunu yapıp sana oynanabilir link ve APK versin.
+title: "🎮 "
+labels: ["oyun-fikri"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ne kadar net yazarsan oyun o kadar istediğin gibi olur. Şunları anlatman yeterli:
+        **ne kontrol ediyorum, amaç ne, neden kaybederim, ne zorlaşır.**
+  - type: textarea
+    id: fikir
+    attributes:
+      label: Oyun fikrim
+      description: Oyunu birine anlatır gibi yaz.
+      placeholder: |
+        Örnek: Karagümrük sokaklarında koşan bir simitçi. Ekrana dokununca zıplıyor,
+        yoldaki çukurlardan ve kedilerden kaçıyor, simit topladıkça puan alıyor.
+        Zamanla hızlanıyor. 3 canı var.
+    validations:
+      required: true
+  - type: dropdown
+    id: tur
+    attributes:
+      label: Görünüm
+      options:
+        - Claude seçsin
+        - 2D (düz, yandan / üstten)
+        - 3D (derinlikli)
+    validations:
+      required: true
+  - type: dropdown
+    id: ekran
+    attributes:
+      label: Ekran yönü
+      options:
+        - Dikey (telefon gibi)
+        - Yatay
+    validations:
+      required: true
+  - type: dropdown
+    id: apk
+    attributes:
+      label: Android APK
+      options:
+        - Evet, APK da üret (yaklaşık 35 dk)
+        - Hayır, sadece web (yaklaşık 15 dk)
+    validations:
+      required: true
+  - type: textarea
+    id: ekstra
+    attributes:
+      label: Ekstra istekler (isteğe bağlı)
+      placeholder: Renkler, müzik havası, zorluk, oyunun adı...

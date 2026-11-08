@@ -1,0 +1,24 @@
+# Unity'nin ürettiği klasörler
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+*.csproj
+*.sln
+*.slnx
+.vs/
+.vscode/
+.idea/
+
+# Bu proje "sadece kod" mantığıyla çalışır: sahne, materyal ve .meta dosyaları
+# her build'de ArcBuild tarafından yeniden üretilir. Bu yüzden repoda tutulmaz.
+*.meta
+/Assets/Scenes/
+/Assets/Resources/ArcMaterials/
+
+# CI çalışma dosyaları (build logu, özet)
+/_ci/

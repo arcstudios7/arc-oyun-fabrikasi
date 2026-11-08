@@ -1,0 +1,149 @@
+# Fikirden oyuna: "oyun-fikri" etiketli bir issue açılınca (veya o issue'ya "/oyun ..." yorumu yazılınca)
+# Claude oyunu kodlar, değişiklikleri main'e gönderir, ardından Unity build + yayın çalışır.
+name: 🎮 Fikirden Oyuna
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  kodla:
+    name: 🧠 Claude oyunu kodluyor
+    # Sadece repo sahibi tetikleyebilir (başkaları senin Claude hakkını harcayamasın).
+    if: >-
+      github.event.sender.login == github.repository_owner && (
+        (github.event_name == 'issues' && github.event.label.name == 'oyun-fikri') ||
+        (github.event_name == 'issue_comment' && !github.event.issue.pull_request &&
+         startsWith(github.event.comment.body, '/oyun') &&
+         contains(github.event.issue.labels.*.name, 'oyun-fikri'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Aynı anda tek oyun kodlansın (job seviyesinde: alakasız yorumlar sırayı bozmasın).
+    concurrency:
+      group: oyun-fabrikasi
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      actions: read
+      id-token: write
+    outputs:
+      android: ${{ steps.opts.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Seçenekleri oku
+        id: opts
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          if printf '%s' "$BODY" | grep -q 'Hayır, sadece web'; then
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Başladığını haber ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body "🧠 Fikrini aldım, oyunu kodluyorum. Ardından Unity ile derleyip linkini buraya yazacağım (web ~10-15 dk, APK ile ~35 dk). [Canlı izle](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+      - name: Son build başarısızsa logunu topla
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p _ci
+          LAST=$(gh run list --workflow fikirden-oyuna.yml --limit 10 --json databaseId,status,conclusion \
+            -q "[.[] | select(.status==\"completed\" and .databaseId != ${{ github.run_id }})][0] | select(.conclusion==\"failure\") | .databaseId" || true)
+          if [ -n "$LAST" ]; then
+            gh run view "$LAST" --log-failed > _ci/full.log 2>/dev/null || true
+            grep -E "error CS[0-9]+|[Ee]xception|\[ARC\]|Build Finished|error:" _ci/full.log | sed -E 's/^[^\t]*\t[^\t]*\t//' | tail -n 150 > _ci/build-log.txt || true
+            if [ ! -s _ci/build-log.txt ]; then tail -n 150 _ci/full.log > _ci/build-log.txt; fi
+            rm -f _ci/full.log
+            echo "Önceki başarısız build logu bulundu ($LAST)."
+          fi
+
+      - name: İsteği dosyaya yaz
+        env:
+          IDEA: ${{ github.event.issue.body }}
+          TITLE: ${{ github.event.issue.title }}
+          CHANGE: ${{ github.event.comment.body }}
+        run: |
+          mkdir -p _ci
+          { echo "# $TITLE"; echo; printf '%s\n' "$IDEA"; } > _ci/idea.md
+          if [ -n "$CHANGE" ]; then printf '%s\n' "$CHANGE" > _ci/change.md; fi
+          ls -la _ci
+
+      - name: Claude oyunu yazıyor
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          claude_args: |
+            --max-turns 150
+            --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,TodoWrite,Bash(ls:*),Bash(mkdir:*),Bash(rm:*),Bash(mv:*),Bash(cp:*),Bash(cat:*),Bash(grep:*),Bash(find:*)"
+          prompt: |
+            You are the game generator of this repository (ARC Oyun Fabrikası).
+            FIRST read CLAUDE.md completely and follow every rule in it.
+
+            MODE: ${{ github.event_name == 'issues' && 'NEW_GAME' || 'CHANGE_REQUEST' }}
+
+            Inputs (all written by the owner in Turkish):
+            - _ci/idea.md   → the game idea from the issue form (always present).
+            - _ci/change.md → only in CHANGE_REQUEST mode: a comment starting with "/oyun". Apply it to the
+              CURRENT game in Assets/Scripts/Game/ — keep everything else, do not start over unless it asks for a new game.
+              "/oyun düzelt" alone means: just fix the build errors.
+            - _ci/build-log.txt → only if the previous Unity build FAILED. Fixing those errors is priority #1.
+
+            Finish with:
+            1. All game code under Assets/Scripts/Game/ (GameInfo.cs + GameMain.cs + any extra files).
+            2. GAME.md updated (Turkish).
+            3. A 2-4 sentence Turkish summary of what you built/changed written to _ci/summary.md.
+            Do NOT run git; the workflow commits for you. You cannot run Unity, so review your C# carefully against the checklist in CLAUDE.md before finishing.
+
+      - name: Değişiklikleri kaydet ve gönder
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ github.event.issue.title }}
+          NUM: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "ARC Oyun Fabrikası"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            gh issue comment "$NUM" --body "🤔 Claude kodda bir değişiklik yapmadı. İsteğini biraz daha açık yazıp tekrar dener misin? (\`/oyun ...\`)"
+            exit 1
+          fi
+          git commit -q -m "🎮 #${NUM}: ${TITLE}"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          if [ -s _ci/summary.md ]; then
+            { echo "📝 **Claude'un notu:**"; echo; cat _ci/summary.md; echo; echo "⏳ Şimdi Unity ile derleniyor..."; } > _ci/comment.md
+            gh issue comment "$NUM" --body-file _ci/comment.md
+          fi
+
+  build:
+    name: 🛠️ Derle ve yayınla
+    needs: kodla
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.event.repository.default_branch }}
+      issue_number: ${{ format('{0}', github.event.issue.number) }}
+      android: ${{ needs.kodla.outputs.android == 'true' }}
+    secrets: inherit
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      issues: write
+      actions: read
