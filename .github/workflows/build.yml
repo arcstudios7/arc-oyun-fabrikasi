@@ -91,6 +91,16 @@ jobs:
           username: ${{ secrets.UNITY_EMAIL }}
           password: ${{ secrets.UNITY_PASSWORD }}
 
+      - name: Projeyi hazırla (Input System derleme sembolü)
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: WebGL
+          log-name: WebGL-Prep
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.PrepareProject
+
       - name: Unity ile derle
         env:
           CESIUM_ION_TOKEN: ${{ secrets.CESIUM_ION_TOKEN }}
@@ -166,6 +176,16 @@ jobs:
           license: personal
           username: ${{ secrets.UNITY_EMAIL }}
           password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Projeyi hazırla (Input System derleme sembolü)
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: StandaloneWindows64
+          log-name: Windows-Prep
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.PrepareProject
 
       - name: Unity ile derle
         env:
@@ -255,6 +275,16 @@ jobs:
           username: ${{ secrets.UNITY_EMAIL }}
           password: ${{ secrets.UNITY_PASSWORD }}
 
+      - name: Projeyi hazırla (Input System derleme sembolü)
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: Android
+          log-name: Android-Prep
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.PrepareProject
+
       - name: Unity ile derle
         env:
           CESIUM_ION_TOKEN: ${{ secrets.CESIUM_ION_TOKEN }}
@@ -332,6 +362,16 @@ jobs:
           license: personal
           username: ${{ secrets.UNITY_EMAIL }}
           password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Projeyi hazırla (Input System derleme sembolü)
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: StandaloneLinux64
+          log-name: Linux-Prep
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.PrepareProject
 
       - name: Linux sürümünü derle
         env:

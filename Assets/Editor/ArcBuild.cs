@@ -40,6 +40,41 @@ public static class ArcBuild
     public static void BuildAndroidMenu() => Build(BuildTarget.Android, "build/Android/Oyun.apk");
 
     /// <summary>Entry point for CI. Reads GameCI's -customBuildPath / -customBuildTarget arguments.</summary>
+    /// <summary>
+    /// First CI pass. Scripting defines like ENABLE_INPUT_SYSTEM are fixed when the editor compiles scripts at startup,
+    /// so the input handler must already be saved in ProjectSettings before the build pass starts. Otherwise editor
+    /// and player disagree about serialized fields ("script class layout is incompatible").
+    /// </summary>
+    public static void PrepareProject()
+    {
+        bool ok = true;
+        try
+        {
+            SetInputHandlerBoth();
+            AssetDatabase.SaveAssets();
+            Debug.Log("[ARC] Proje hazır (activeInputHandler = 2).");
+        }
+        catch (Exception e)
+        {
+            ok = false;
+            Debug.LogError("[ARC] Hazırlık hatası: " + e);
+        }
+        EditorApplication.Exit(ok ? 0 : 101);
+    }
+
+    static void SetInputHandlerBoth()
+    {
+        var playerSettings = Resources.FindObjectsOfTypeAll<PlayerSettings>().FirstOrDefault();
+        if (playerSettings == null) return;
+        var so = new SerializedObject(playerSettings);
+        var prop = so.FindProperty("activeInputHandler");
+        if (prop != null && prop.intValue != 2)
+        {
+            prop.intValue = 2;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+    }
+
     public static void BuildFromCommandLine()
     {
         var args = Environment.GetCommandLineArgs();
@@ -359,16 +394,6 @@ public static class ArcBuild
         PlayerSettings.defaultWebScreenHeight = portrait ? 960 : 540;
 
         // Arc helpers use the classic Input Manager, realistic games use the Input System → enable BOTH (2).
-        var playerSettings = Resources.FindObjectsOfTypeAll<PlayerSettings>().FirstOrDefault();
-        if (playerSettings != null)
-        {
-            var so = new SerializedObject(playerSettings);
-            var prop = so.FindProperty("activeInputHandler");
-            if (prop != null && prop.intValue != 2)
-            {
-                prop.intValue = 2;
-                so.ApplyModifiedPropertiesWithoutUndo();
-            }
-        }
+        SetInputHandlerBoth();
     }
 }
