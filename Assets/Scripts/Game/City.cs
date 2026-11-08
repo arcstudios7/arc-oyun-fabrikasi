@@ -388,7 +388,8 @@ namespace Game
             for (float z = -MainLength + 40f; z < MainLength; z += 70f)
             {
                 var hp = new Vector3(RoadHalf + 0.5f, 0.15f, z);
-                Props.Spawn("fire_hydrant", hp, 0f, 1f, root);
+                Shapes.Cylinder(hp + Vector3.up * 0.35f, new Vector3(0.22f, 0.35f, 0.22f), Palette.Hex("#B3261E"), parent: root);
+                Shapes.Sphere(hp + Vector3.up * 0.72f, 0.24f, Palette.Hex("#B3261E"), parent: root);
                 AddObstacle(hp, 0.3f);
             }
         }
