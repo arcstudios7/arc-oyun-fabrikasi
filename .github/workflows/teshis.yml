@@ -1,0 +1,16 @@
+name: 🔎 Paket teşhis
+on: workflow_dispatch
+jobs:
+  cesium:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set -x
+          URL=$(npm view com.cesium.unity@1.23.2 dist.tarball --registry https://unity.pkg.cesium.com)
+          echo "$URL"
+          curl -sSL "$URL" -o c.tgz
+          mkdir p && tar xzf c.tgz -C p
+          find p -maxdepth 3 -type d | head -50
+          find p -name "*.asmdef" -print -exec cat {} \;
+          find p -name "*.dll" | head -30
+          for f in $(find p -name "*.dll" | head -10); do echo "== $f.meta"; head -60 "$f.meta"; done
