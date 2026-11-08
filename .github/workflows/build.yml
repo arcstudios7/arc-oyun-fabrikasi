@@ -46,7 +46,6 @@ jobs:
       - name: Unity'yi kur
         uses: RageAgainstThePixel/unity-setup@v3
         with:
-          version-file: ProjectSettings/ProjectVersion.txt
           unity-version: "6000.0.x"
           build-targets: WebGL
           cache-installation: true
@@ -107,7 +106,6 @@ jobs:
       - name: Unity'yi kur
         uses: RageAgainstThePixel/unity-setup@v3
         with:
-          version-file: ProjectSettings/ProjectVersion.txt
           unity-version: "6000.0.x"
           build-targets: Android
           cache-installation: true
