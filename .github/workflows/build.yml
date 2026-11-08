@@ -166,7 +166,7 @@ jobs:
         with:
           version-file: None
           unity-version: "6000.0.x"
-          build-targets: StandaloneWindows64
+          modules: windows-mono
           cache-installation: true
 
       # Ücretsiz Personal lisans: .ulf dosyası gerekmez, Unity hesabıyla (e-posta + şifre) etkinleşir.

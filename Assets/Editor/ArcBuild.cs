@@ -133,7 +133,20 @@ public static class ArcBuild
             foreach (var msg in step.messages.Where(m => m.type == LogType.Error || m.type == LogType.Exception))
                 Debug.LogError("[ARC] " + msg.content);
         }
-        return summary.result == BuildResult.Succeeded;
+        bool ok = summary.result == BuildResult.Succeeded;
+        if (ok && target == BuildTarget.WebGL) WriteWebHeaders(path);
+        return ok;
+    }
+
+    /// <summary>Cloudflare Pages reads "_headers": multithreaded WebGL needs cross-origin isolation.</summary>
+    static void WriteWebHeaders(string dir)
+    {
+        string text = "/*\n" +
+                      "  Cross-Origin-Opener-Policy: same-origin\n" +
+                      "  Cross-Origin-Embedder-Policy: require-corp\n" +
+                      "  Cross-Origin-Resource-Policy: cross-origin\n";
+        System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "_headers"), text);
+        Debug.Log("[ARC] _headers yazıldı (çoklu iş parçacığı için).");
     }
 
     /// <summary>PC gets the high-end settings; web / phones keep the lighter defaults.</summary>
@@ -390,6 +403,9 @@ public static class ArcBuild
         // Unity loader unpack it in JavaScript, so it works on any static host without special server headers.
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
         PlayerSettings.WebGL.decompressionFallback = true;
+        // Cesium's native web libraries are built with pthreads + wasm exceptions: they only link with
+        // "Native C/C++ Multithreading" on. The page then needs COOP/COEP headers (written next to index.html).
+        PlayerSettings.WebGL.threadsSupport = true;
         PlayerSettings.defaultWebScreenWidth = portrait ? 540 : 960;
         PlayerSettings.defaultWebScreenHeight = portrait ? 960 : 540;
 
