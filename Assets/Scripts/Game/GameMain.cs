@@ -228,9 +228,23 @@ namespace Game
             }
             float back = 6.2f + moto.Kmh * 0.03f;
             desired = moto.Root.position - moto.Forward * back + Vector3.up * (2.4f + moto.Kmh * 0.008f);
+            desired = KeepCameraOnStreet(moto.Root.position, desired);
             cam.transform.position = Vector3.SmoothDamp(cam.transform.position, desired, ref camVel, 0.18f);
+            cam.transform.position = KeepCameraOnStreet(moto.Root.position, cam.transform.position);
             cam.transform.LookAt(focus + moto.Forward * 3.5f);
             cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, 60f + moto.Kmh * 0.18f, dt * 3f);
+        }
+
+        /// <summary>Pulls the camera toward the bike (and up) until it is above a street, so it never enters a building.</summary>
+        Vector3 KeepCameraOnStreet(Vector3 bike, Vector3 camPos)
+        {
+            if (city.IsDrivable(camPos)) return camPos;
+            for (float t = 0.9f; t > 0.05f; t -= 0.1f)
+            {
+                Vector3 p = Vector3.Lerp(bike, camPos, t);
+                if (city.IsDrivable(p)) return new Vector3(p.x, camPos.y + (1f - t) * 2.5f, p.z);
+            }
+            return new Vector3(bike.x, camPos.y + 2.5f, bike.z) - moto.Forward * 0.5f;
         }
 
         void ShowToast(string text)

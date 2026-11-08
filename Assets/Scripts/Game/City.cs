@@ -37,6 +37,7 @@ namespace Game
 
         Transform root;
         Font font;
+        Material textMat;
 
         static readonly string[] Facades = { "painted_plaster_wall", "white_plaster_02", "red_brick_03", "rough_plasterbrick_05", "cracked_concrete_wall" };
         static readonly string[] Pastels = { "#F2D7B6", "#E8B4A0", "#F4E3A1", "#B7D3C9", "#E6C9D8", "#D9CBB3", "#F7F1E5", "#C9D6E8" };
@@ -49,6 +50,8 @@ namespace Game
             Random.InitState(seed);
             root = new GameObject("City").transform;
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var textBase = Resources.Load<Material>("ArcMaterials/Text");
+            textMat = textBase != null ? new Material(textBase) { mainTexture = font.material.mainTexture } : font.material;
 
             BuildGround();
             BuildMainAvenue();
@@ -214,13 +217,13 @@ namespace Game
             // Body
             Box(b, new Vector3(0f, h * 0.5f, -depth * 0.5f), new Vector3(width, h, depth), wall);
             // Ground floor band (darker stone)
-            Box(b, new Vector3(0f, 1.6f, 0.03f), new Vector3(width, 3.2f, 0.12f), Mats.PbrSized("rough_plasterbrick_05", new Vector2(width, 3.2f), 2f, 0.1f, Palette.Hex("#B9B2A6")));
+            Box(b, new Vector3(0f, 1.6f, 0.03f), new Vector3(width, 3.2f, 0.12f), Mats.PbrSized("rough_plasterbrick_05", new Vector2(width, 3.2f), 2f, 0.1f, Palette.Hex("#E3DCCF")));
             // Cornice + roof edge
             Box(b, new Vector3(0f, h - 0.15f, 0.15f), new Vector3(width + 0.3f, 0.35f, 0.5f), Mats.Lit(Palette.Darker(tint, 0.25f)));
             Box(b, new Vector3(0f, floors * FloorH * 0.5f + 1.5f, 0.06f), new Vector3(width, 0.18f, 0.25f), Mats.Lit(Palette.Lighter(tint, 0.3f)));
 
             // Windows on upper floors
-            Material glass = Mats.Glass(Palette.Hex("#1F2A33"));
+            Material glass = Mats.Glass(Palette.Hex("#40525E"));
             Material frame = Mats.Lit(Palette.Hex("#EDE8DF"));
             int cols = Mathf.Max(1, Mathf.FloorToInt(width / 2.6f));
             float spacing = width / cols;
@@ -306,7 +309,7 @@ namespace Game
             tm.anchor = TextAnchor.MiddleCenter;
             tm.alignment = TextAlignment.Center;
             tm.color = textColor;
-            t.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+            t.GetComponent<MeshRenderer>().sharedMaterial = textMat;
             // shrink long names to fit the board
             float approxWidth = text.Length * 64 * 0.05f * 0.055f;
             if (approxWidth > width * 0.92f) tm.characterSize *= width * 0.92f / approxWidth;

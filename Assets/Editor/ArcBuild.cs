@@ -23,6 +23,7 @@ public static class ArcBuild
     {
         EnsureRenderPipeline();
         EnsureMaterials();
+        ReimportModels();
         EnsureScene();
         ApplyPlayerSettings();
         AssetDatabase.SaveAssets();
@@ -119,6 +120,19 @@ public static class ArcBuild
         MakeMaterial(dir + "Unlit.mat", "Universal Render Pipeline/Unlit");
         MakeMaterial(dir + "Sprite.mat", "Sprites/Default");
         MakeMaterial(dir + "Sky.mat", "Skybox/Cubemap");
+        MakeMaterial(dir + "Text.mat", "Arc/Text3D");
+    }
+
+    /// <summary>
+    /// glTF models pick their shaders at import time. Re-import them now that URP is active,
+    /// otherwise they keep built-in shaders and are invisible under URP.
+    /// </summary>
+    static void ReimportModels()
+    {
+        const string models = "Assets/Resources/PH/models";
+        if (!AssetDatabase.IsValidFolder(models)) return;
+        AssetDatabase.ImportAsset(models, ImportAssetOptions.ImportRecursive | ImportAssetOptions.ForceUpdate);
+        Debug.Log("[ARC] Modeller URP için yeniden içe aktarıldı.");
     }
 
     static Material MakeMaterial(string path, string shaderName)
