@@ -2,7 +2,7 @@
     "name": "ArcOyun",
     "rootNamespace": "",
     "references": [
-        "CesiumRuntime",
+        "CesiumForUnity",
         "Unity.InputSystem",
         "Unity.RenderPipelines.Universal.Runtime",
         "Unity.RenderPipelines.Core.Runtime",

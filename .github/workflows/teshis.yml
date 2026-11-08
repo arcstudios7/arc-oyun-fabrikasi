@@ -6,13 +6,13 @@ jobs:
     steps:
       - run: |
           set -x
-          URL=$(npm view com.cesium.unity@1.23.2 dist.tarball --registry https://unity.pkg.cesium.com)
+          URL=$(npm view com.cesium.unity@1.26.1 dist.tarball --registry https://unity.pkg.cesium.com)
           echo "$URL"
           curl -sSL "$URL" -o c.tgz || true
           file c.tgz; head -c 300 c.tgz; echo
-          npm pack com.cesium.unity@1.23.2 --registry https://unity.pkg.cesium.com
+          npm pack com.cesium.unity@1.26.1 --registry https://unity.pkg.cesium.com
           ls -la
-          mkdir p && tar xzf com.cesium.unity-1.23.2.tgz -C p
+          mkdir p && tar xzf com.cesium.unity-1.26.1.tgz -C p
           find p -maxdepth 3 -type d | head -50
           find p -name "*.asmdef" -print -exec cat {} \;
           find p -name "*.dll" | head -30
