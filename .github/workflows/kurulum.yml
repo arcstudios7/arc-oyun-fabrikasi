@@ -22,7 +22,6 @@ jobs:
       - name: Gizli anahtarları ve ayarları kontrol et
         env:
           GH_TOKEN: ${{ github.token }}
-          HAS_UNITY_LICENSE: ${{ secrets.UNITY_LICENSE != '' }}
           HAS_UNITY_EMAIL: ${{ secrets.UNITY_EMAIL != '' }}
           HAS_UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD != '' }}
           HAS_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
@@ -30,7 +29,6 @@ jobs:
           HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
           HAS_CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          LICENSE_TEXT: ${{ secrets.UNITY_LICENSE }}
         run: |
           OK=true
           {
@@ -41,15 +39,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           row() { echo "| $1 | $2 |" >> "$GITHUB_STEP_SUMMARY"; }
 
-          for s in UNITY_LICENSE UNITY_EMAIL UNITY_PASSWORD; do
+          for s in UNITY_EMAIL UNITY_PASSWORD; do
             v="HAS_$s"
             if [ "${!v}" = "true" ]; then row "$s" "✅ var"; else row "$s" "❌ eksik"; OK=false; fi
           done
-
-          if [ "$HAS_UNITY_LICENSE" = "true" ]; then
-            if printf '%s' "$LICENSE_TEXT" | grep -q "<License"; then row "UNITY_LICENSE içeriği" "✅ .ulf dosyası gibi görünüyor";
-            else row "UNITY_LICENSE içeriği" "⚠️ .ulf dosyasının TAMAMINI (<?xml ... ile başlayan) yapıştırdığından emin ol"; OK=false; fi
-          fi
 
           if [ "$HAS_ANTHROPIC_KEY" = "true" ]; then row "ANTHROPIC_API_KEY (Claude API)" "✅ var";
           elif [ "$HAS_CLAUDE_TOKEN" = "true" ]; then row "Claude erişimi (abonelik token'ı)" "✅ var";

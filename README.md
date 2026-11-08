@@ -21,7 +21,7 @@ Bilgisayarında Unity açmana, kod yazmana ya da bilgisayarını açık tutmana 
  🧠 Claude (GitHub Actions)  →  CLAUDE.md kurallarıyla C# kodu yazar → main'e kaydeder
         │
         ▼
- 🛠️ Unity 6 (GameCI, bulutta)  →  WebGL + Android APK derler
+ 🛠️ Unity 6 (GitHub sunucusunda)  →  WebGL + Android APK derler
         │
         ▼
  🚀 Cloudflare Pages + GitHub Release  →  Linkler issue'ya yorum olarak gelir
@@ -36,22 +36,16 @@ Bunu mümkün kılan bir püf noktası var: Projede hazır sahne, model, resim y
 ### 1) Repo
 `arcstudios7/arc-oyun-fabrikasi` (**private**). Dosyalar zaten yüklü.
 
-### 2) Unity lisans dosyasını al (ücretsiz Personal lisans)
-1. Windows'a **Unity Hub** kur: https://unity.com/download
-2. Unity hesabınla giriş yap.
-3. Hub → ⚙️ **Preferences / Settings** → **Licenses** → **Add** → **Get a free personal license**.
-4. Şu dosyayı Not Defteri ile aç: `C:\ProgramData\Unity\Unity_lic.ulf`
-   (ProgramData gizli bir klasör. Adres çubuğuna yazarak gidebilirsin.)
-5. İçindeki metnin **tamamını** kopyala. `<?xml` ile başlıyor.
+### 2) Unity hesabı
+Ücretsiz bir Unity hesabın olsun (https://id.unity.com). Lisans dosyasına gerek yok: build sırasında ücretsiz Personal lisans, hesabının e-posta ve şifresiyle otomatik etkinleşir.
 
-> Unity hesabında iki adımlı doğrulama (2FA) açıksa build sırasında giriş yapılamayabilir. Sorun çıkarsa 2FA'yı kapat ya da GameCI belgelerine bak.
+> Unity hesabında **iki adımlı doğrulama (2FA) kapalı** olmalı, yoksa sunucu giriş yapamaz.
 
 ### 3) Gizli anahtarları ekle
 Repo → **Settings → Secrets and variables → Actions → New repository secret**:
 
 | İsim | Değer |
 |---|---|
-| `UNITY_LICENSE` | 2. adımda kopyaladığın `.ulf` metninin tamamı |
 | `UNITY_EMAIL` | Unity hesabının e-postası |
 | `UNITY_PASSWORD` | Unity hesabının şifresi |
 | `ANTHROPIC_API_KEY` | https://console.anthropic.com → **API Keys → Create Key** ile aldığın `sk-ant-...` anahtarı |
@@ -113,8 +107,7 @@ Repoyu Claude Code'a bağlayıp "şöyle bir oyun yap" demen de yeterli. Claude 
 | Belirti | Çözüm |
 |---|---|
 | Issue açtım, hiçbir şey olmadı | `oyun-fikri` etiketi var mı? Kurulum Kontrolü'nü çalıştır. Issue'yu sen mi açtın? (Sadece repo sahibi tetikleyebilir.) |
-| `License activation failed` | `UNITY_LICENSE` içeriğinin tamamı yapıştırılmış mı? E-posta/şifre doğru mu? 2FA kapalı mı? |
-| `Unity image not found` / sürüm hatası | `ProjectSettings/ProjectVersion.txt` içindeki sürümü, [GameCI imaj listesinde](https://hub.docker.com/r/unityci/editor/tags) bulunan başka bir `6000.0.x` sürümüyle değiştir |
+| Lisans etkinleştirme hatası | `UNITY_EMAIL` / `UNITY_PASSWORD` doğru mu? Unity hesabında 2FA kapalı mı? |
 | Build başarısız (kod hatası) | Issue'ya `/oyun düzelt` yaz |
 | Web linki gelmedi | `CLOUDFLARE_API_TOKEN` ve `CLOUDFLARE_ACCOUNT_ID` var mı? Kurulum Kontrolü'nü çalıştır |
 | APK linki açılmıyor | Repo private: telefonda GitHub'a giriş yapmış olman lazım (ya da APK'yı PC'den indirip telefona at) |

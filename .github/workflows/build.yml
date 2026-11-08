@@ -1,4 +1,4 @@
-# Unity projesini bulutta derler (GameCI), web sürümünü GitHub Pages'e koyar,
+# Unity projesini bulutta derler (GitHub runner'a Unity kurulur), web sürümünü GitHub Pages'e koyar,
 # APK + web zip'ini bir Release olarak saklar ve (varsa) issue'ya link yazar.
 name: 🛠️ Unity Build
 
@@ -27,11 +27,6 @@ on:
 permissions:
   contents: read
 
-env:
-  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
 jobs:
   webgl:
     name: 🌐 WebGL
@@ -48,13 +43,33 @@ jobs:
           key: Library-WebGL-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
           restore-keys: Library-WebGL-
 
-      - name: Unity ile derle
-        uses: game-ci/unity-builder@v4
+      - name: Unity'yi kur
+        uses: RageAgainstThePixel/unity-setup@v3
         with:
-          targetPlatform: WebGL
-          buildName: Oyun
-          buildMethod: ArcBuild.BuildFromCommandLine
-          versioning: None
+          version-file: ProjectSettings/ProjectVersion.txt
+          unity-version: "6000.0"
+          build-targets: WebGL
+          cache-installation: true
+
+      # Ücretsiz Personal lisans: .ulf dosyası gerekmez, Unity hesabıyla (e-posta + şifre) etkinleşir.
+      - name: Unity lisansını etkinleştir
+        uses: RageAgainstThePixel/activate-unity-license@v3
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Unity ile derle
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: WebGL
+          log-name: WebGL-Build
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.BuildFromCommandLine
+            -customBuildTarget WebGL
+            -customBuildPath ${{ github.workspace }}/build/WebGL/Oyun
 
       - uses: actions/upload-artifact@v4
         with:
@@ -72,7 +87,7 @@ jobs:
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: false
-          android: true
+          android: false
           dotnet: true
           haskell: true
           large-packages: false
@@ -89,14 +104,33 @@ jobs:
           key: Library-Android-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
           restore-keys: Library-Android-
 
-      - name: Unity ile derle
-        uses: game-ci/unity-builder@v4
+      - name: Unity'yi kur
+        uses: RageAgainstThePixel/unity-setup@v3
         with:
-          targetPlatform: Android
-          buildName: Oyun
-          buildMethod: ArcBuild.BuildFromCommandLine
-          versioning: None
-          androidExportType: androidPackage
+          version-file: ProjectSettings/ProjectVersion.txt
+          unity-version: "6000.0"
+          build-targets: Android
+          cache-installation: true
+
+      # Ücretsiz Personal lisans: .ulf dosyası gerekmez, Unity hesabıyla (e-posta + şifre) etkinleşir.
+      - name: Unity lisansını etkinleştir
+        uses: RageAgainstThePixel/activate-unity-license@v3
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Unity ile derle
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: Android
+          log-name: Android-Build
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.BuildFromCommandLine
+            -customBuildTarget Android
+            -customBuildPath ${{ github.workspace }}/build/Android/Oyun.apk
 
       - uses: actions/upload-artifact@v4
         with:
