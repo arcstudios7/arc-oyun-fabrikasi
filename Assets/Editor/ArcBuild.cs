@@ -296,9 +296,96 @@ public static class ArcBuild
         Debug.Log("[ARC] Kurye dokuları çıkarıldı: " + ok + " (" + AssetDatabase.FindAssets("t:Texture2D", new[] { dir }).Length + " doku)");
     }
 
+    /// <summary>
+    /// The FBX materials do not pick up the extracted textures by themselves, so build URP Lit materials here
+    /// (Remy_<Part>_Diffuse / _Normal) and remap the FBX's materials onto them. Hair gets its opacity as alpha cutout.
+    /// </summary>
+    static void RemapCourierMaterials()
+    {
+        const string model = "Assets/Resources/Kurye/Kurye.fbx";
+        const string texDir = "Assets/Art/Kurye";
+        const string matDir = "Assets/Art/Kurye/Mat";
+        var mi = AssetImporter.GetAtPath(model) as ModelImporter;
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(model);
+        var shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (mi == null || prefab == null || shader == null || !AssetDatabase.IsValidFolder(texDir)) return;
+        if (!AssetDatabase.IsValidFolder(matDir)) AssetDatabase.CreateFolder(texDir, "Mat");
+
+        var texPaths = AssetDatabase.FindAssets("t:Texture2D", new[] { texDir }).Select(AssetDatabase.GUIDToAssetPath).ToArray();
+        string TexPath(string part, string kind)
+        {
+            foreach (var p in texPaths)
+            {
+                string f = System.IO.Path.GetFileNameWithoutExtension(p).ToLowerInvariant();
+                if (f.Contains("_" + part + "_") && f.EndsWith(kind)) return p;
+            }
+            return null;
+        }
+
+        var names = new System.Collections.Generic.HashSet<string>();
+        foreach (var r in prefab.GetComponentsInChildren<Renderer>(true))
+            foreach (var m in r.sharedMaterials)
+                if (m != null) names.Add(m.name);
+
+        int count = 0;
+        foreach (string name in names)
+        {
+            string part = name.ToLowerInvariant().Replace("mat", "").Trim();
+            bool lash = part.StartsWith("eyelash");
+            if (lash) part = "body";   // lashes live in the body texture; its opacity map cuts them out
+            string diff = TexPath(part, "diffuse");
+            string nor = TexPath(part, "normal");
+            string opa = TexPath(part, "opacity");
+            bool cutout = (part == "hair" || lash) && diff != null && opa != null;
+            if (cutout) diff = MakeRgba(diff, opa, texDir + "/Remy_" + part + "_RGBA.png");
+
+            var mat = new Material(shader) { name = name };
+            if (diff != null) mat.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(diff));
+            if (nor != null)
+            {
+                mat.SetTexture("_BumpMap", AssetDatabase.LoadAssetAtPath<Texture2D>(nor));
+                mat.EnableKeyword("_NORMALMAP");
+            }
+            mat.SetFloat("_Smoothness", part == "shoes" ? 0.45f : 0.25f);
+            if (cutout)
+            {
+                mat.SetFloat("_AlphaClip", 1f);
+                mat.SetFloat("_Cutoff", 0.4f);
+                mat.SetFloat("_Cull", 0f);
+                mat.EnableKeyword("_ALPHATEST_ON");
+            }
+            string path = matDir + "/" + name + ".mat";
+            AssetDatabase.DeleteAsset(path);
+            AssetDatabase.CreateAsset(mat, path);
+            mi.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), name), mat);
+            count++;
+        }
+        mi.SaveAndReimport();
+        Debug.Log("[ARC] Kurye malzemeleri bağlandı: " + count + " (" + string.Join(", ", names) + ")");
+    }
+
+    /// <summary>Diffuse RGB + opacity (red channel) → one RGBA png, imported like the other courier textures.</summary>
+    static string MakeRgba(string diffPath, string opaPath, string outPath)
+    {
+        var d = new Texture2D(2, 2);
+        var o = new Texture2D(2, 2);
+        d.LoadImage(System.IO.File.ReadAllBytes(diffPath));
+        o.LoadImage(System.IO.File.ReadAllBytes(opaPath));
+        if (o.width != d.width || o.height != d.height) return diffPath;
+        var dc = d.GetPixels32();
+        var oc = o.GetPixels32();
+        for (int i = 0; i < dc.Length; i++) dc[i].a = oc[i].r;
+        var outTex = new Texture2D(d.width, d.height, TextureFormat.RGBA32, false);
+        outTex.SetPixels32(dc);
+        System.IO.File.WriteAllBytes(outPath, outTex.EncodeToPNG());
+        AssetDatabase.ImportAsset(outPath);
+        return outPath;
+    }
+
     static void ReimportModels()
     {
         ExtractCourierTextures();
+        RemapCourierMaterials();
         foreach (var folder in new[] { "Assets/Resources/PH/models", "Assets/Resources/Kurye", "Assets/Anim/Kurye", "Assets/Resources/Arac" })
         {
             if (!AssetDatabase.IsValidFolder(folder)) continue;
