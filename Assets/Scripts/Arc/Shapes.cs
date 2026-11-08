@@ -56,6 +56,43 @@ namespace Arc
                 r.sharedMaterial = lit ? Mats.Lit(color) : Mats.Unlit(color);
         }
 
+        /// <summary>
+        /// Performance: merges all child primitives that share a material into one mesh per material
+        /// (a building with 60 windows becomes ~4 draw calls). Call after building a static object.
+        /// Children with their own scripts / text are kept untouched.
+        /// </summary>
+        public static void Combine(GameObject root)
+        {
+            var groups = new Dictionary<Material, List<CombineInstance>>();
+            var used = new List<GameObject>();
+            Matrix4x4 toLocal = root.transform.worldToLocalMatrix;
+            foreach (var mf in root.GetComponentsInChildren<MeshFilter>())
+            {
+                if (mf.gameObject == root || mf.sharedMesh == null || !mf.sharedMesh.isReadable) continue;
+                if (mf.transform.childCount > 0) continue;
+                var mr = mf.GetComponent<MeshRenderer>();
+                if (mr == null || mr.sharedMaterial == null) continue;
+                if (!groups.TryGetValue(mr.sharedMaterial, out var list))
+                {
+                    list = new List<CombineInstance>();
+                    groups[mr.sharedMaterial] = list;
+                }
+                list.Add(new CombineInstance { mesh = mf.sharedMesh, transform = toLocal * mf.transform.localToWorldMatrix });
+                used.Add(mf.gameObject);
+            }
+            foreach (var kv in groups)
+            {
+                var go = new GameObject("Combined");
+                go.transform.SetParent(root.transform, false);
+                var mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+                mesh.CombineMeshes(kv.Value.ToArray(), true, true);
+                mesh.RecalculateBounds();
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                go.AddComponent<MeshRenderer>().sharedMaterial = kv.Key;
+            }
+            foreach (var g in used) Object.Destroy(g);
+        }
+
         // ---------- 2D ----------
 
         static readonly Dictionary<Shape2D, Sprite> sprites = new Dictionary<Shape2D, Sprite>();

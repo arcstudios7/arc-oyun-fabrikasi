@@ -1,0 +1,24 @@
+{
+  "hdri": "belfast_sunset_puresky",
+  "textures": [
+    "asphalt_02",
+    "pavement_03",
+    "cobblestone_floor_04",
+    "painted_plaster_wall",
+    "white_plaster_02",
+    "red_brick_03",
+    "rough_plasterbrick_05",
+    "cracked_concrete_wall",
+    "corrugated_iron"
+  ],
+  "models": [
+    "street_lamp_01",
+    "concrete_road_barrier",
+    "fire_hydrant",
+    "outdoor_table_chair_set_01",
+    "covered_car"
+  ],
+  "texture_res": "1k",
+  "hdri_res": "2k",
+  "model_res": "1k"
+}

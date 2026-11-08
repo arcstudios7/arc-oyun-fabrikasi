@@ -26,6 +26,9 @@ namespace Arc
         /// <summary>Short Turkish "how to play" text shown on the menu.</summary>
         protected virtual string HowToPlay => "";
 
+        /// <summary>Title on the end screen. Default: "KAZANDIN!" / "OYUN BİTTİ".</summary>
+        protected virtual string EndTitle(bool won) => won ? "KAZANDIN!" : "OYUN BİTTİ";
+
         /// <summary>Set false for games without a score (e.g. puzzle with levels) to hide score UI.</summary>
         protected virtual bool ShowScore => true;
 
@@ -173,7 +176,7 @@ namespace Arc
 
                 case State.GameOver:
                     Hud.Overlay(new Color(0f, 0f, 0f, 0.55f));
-                    Hud.Center(lastWon ? "KAZANDIN!" : "OYUN BİTTİ", -200, 1.8f, lastWon ? Palette.Good : Palette.Danger);
+                    Hud.Center(EndTitle(lastWon), -200, 1.8f, lastWon ? Palette.Good : Palette.Danger);
                     if (ShowScore)
                     {
                         Hud.Center("Skor: " + Score, -80, 1.3f);

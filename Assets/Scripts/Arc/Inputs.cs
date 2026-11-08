@@ -13,11 +13,15 @@ namespace Arc
         static Vector2Int swipe;
         static bool tapped;
 
+        /// <summary>Simulated input (used by automatic screenshot runs). x = steer, y = throttle.</summary>
+        public static Vector2 SimMove;
+
         /// <summary>-1..1. Arrow keys / A-D, or holding the left/right half of the screen.</summary>
         public static float Horizontal
         {
             get
             {
+                if (SimMove.x != 0f) return SimMove.x;
                 float k = 0f;
                 if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) k -= 1f;
                 if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D)) k += 1f;
@@ -32,6 +36,7 @@ namespace Arc
         {
             get
             {
+                if (SimMove.y != 0f) return SimMove.y;
                 float k = 0f;
                 if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S)) k -= 1f;
                 if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W)) k += 1f;

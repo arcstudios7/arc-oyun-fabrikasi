@@ -6,6 +6,8 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 /// <summary>
 /// Turns this code-only project into a buildable Unity project:
@@ -19,6 +21,7 @@ public static class ArcBuild
     [MenuItem("ARC/Hazırla (sahne + materyaller + ayarlar)")]
     public static void Prepare()
     {
+        EnsureRenderPipeline();
         EnsureMaterials();
         EnsureScene();
         ApplyPlayerSettings();
@@ -41,7 +44,10 @@ public static class ArcBuild
 
         BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
         if (!string.IsNullOrEmpty(targetName) && Enum.TryParse(targetName, true, out BuildTarget parsed)) target = parsed;
-        if (string.IsNullOrEmpty(path)) path = target == BuildTarget.Android ? "build/Android/Oyun.apk" : "build/" + target + "/Oyun";
+        if (string.IsNullOrEmpty(path))
+            path = target == BuildTarget.Android ? "build/Android/Oyun.apk"
+                : target == BuildTarget.StandaloneLinux64 ? "build/StandaloneLinux64/Oyun.x86_64"
+                : "build/" + target + "/Oyun";
 
         Debug.Log("[ARC] Build başlıyor: " + target + " → " + path);
         bool ok = false;
@@ -100,21 +106,100 @@ public static class ArcBuild
     {
         EnsureFolder("Assets", "Resources");
         EnsureFolder("Assets/Resources", "ArcMaterials");
-        MakeMaterial("Assets/Resources/ArcMaterials/Lit.mat", "Standard");
-        MakeMaterial("Assets/Resources/ArcMaterials/Unlit.mat", "Unlit/Color");
-        MakeMaterial("Assets/Resources/ArcMaterials/Sprite.mat", "Sprites/Default");
+        const string dir = "Assets/Resources/ArcMaterials/";
+        MakeMaterial(dir + "Lit.mat", "Universal Render Pipeline/Lit");
+        var litNormal = MakeMaterial(dir + "LitNormal.mat", "Universal Render Pipeline/Lit");
+        if (litNormal != null)
+        {
+            // Keep the normal-map shader variant in the build (runtime PBR materials enable it).
+            litNormal.EnableKeyword("_NORMALMAP");
+            litNormal.SetTexture("_BumpMap", Texture2D.normalTexture);
+            EditorUtility.SetDirty(litNormal);
+        }
+        MakeMaterial(dir + "Unlit.mat", "Universal Render Pipeline/Unlit");
+        MakeMaterial(dir + "Sprite.mat", "Sprites/Default");
+        MakeMaterial(dir + "Sky.mat", "Skybox/Cubemap");
     }
 
-    static void MakeMaterial(string path, string shaderName)
+    static Material MakeMaterial(string path, string shaderName)
     {
-        if (AssetDatabase.LoadAssetAtPath<Material>(path) != null) return;
         var shader = Shader.Find(shaderName);
         if (shader == null)
         {
             Debug.LogError("[ARC] Shader bulunamadı: " + shaderName);
-            return;
+            return null;
         }
-        AssetDatabase.CreateAsset(new Material(shader), path);
+        var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (existing != null)
+        {
+            if (existing.shader != shader) { existing.shader = shader; EditorUtility.SetDirty(existing); }
+            return existing;
+        }
+        var mat = new Material(shader);
+        AssetDatabase.CreateAsset(mat, path);
+        return mat;
+    }
+
+    /// <summary>Creates and activates the Universal Render Pipeline (URP) from code: modern lighting, soft shadows, post-processing.</summary>
+    static void EnsureRenderPipeline()
+    {
+        EnsureFolder("Assets", "Settings");
+        const string rdPath = "Assets/Settings/ArcRenderer.asset";
+        const string rpPath = "Assets/Settings/ArcURP.asset";
+
+        var rd = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(rdPath);
+        if (rd == null)
+        {
+            rd = ScriptableObject.CreateInstance<UniversalRendererData>();
+            AssetDatabase.CreateAsset(rd, rdPath);
+        }
+        if (rd.postProcessData == null)
+        {
+            rd.postProcessData = AssetDatabase.LoadAssetAtPath<PostProcessData>("Packages/com.unity.render-pipelines.universal/Runtime/Data/PostProcessData.asset");
+            if (rd.postProcessData == null) Debug.LogWarning("[ARC] PostProcessData bulunamadı; efektler çalışmayabilir.");
+            EditorUtility.SetDirty(rd);
+        }
+
+        var rp = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(rpPath);
+        if (rp == null)
+        {
+            rp = UniversalRenderPipelineAsset.Create(rd);
+            AssetDatabase.CreateAsset(rp, rpPath);
+        }
+        rp.supportsHDR = true;
+        rp.msaaSampleCount = 1;          // FXAA on the camera instead (cheaper on phones / WebGL)
+        rp.shadowDistance = 90f;
+        rp.shadowCascadeCount = 2;
+        rp.renderScale = 1f;
+        var so = new SerializedObject(rp);
+        SetBool(so, "m_SoftShadowsSupported", true);
+        SetBool(so, "m_MainLightShadowsSupported", true);
+        SetInt(so, "m_MainLightShadowmapResolution", 2048);
+        SetBool(so, "m_SupportsTerrainHoles", false);
+        so.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(rp);
+
+        GraphicsSettings.defaultRenderPipeline = rp;
+        int current = QualitySettings.GetQualityLevel();
+        for (int i = 0; i < QualitySettings.names.Length; i++)
+        {
+            QualitySettings.SetQualityLevel(i, false);
+            QualitySettings.renderPipeline = rp;
+        }
+        QualitySettings.SetQualityLevel(current, false);
+        AssetDatabase.SaveAssets();
+    }
+
+    static void SetBool(SerializedObject so, string name, bool value)
+    {
+        var p = so.FindProperty(name);
+        if (p != null) p.boolValue = value;
+    }
+
+    static void SetInt(SerializedObject so, string name, int value)
+    {
+        var p = so.FindProperty(name);
+        if (p != null) p.intValue = value;
     }
 
     static void EnsureScene()
@@ -125,6 +210,13 @@ public static class ArcBuild
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             EditorSceneManager.SaveScene(scene, ScenePath);
         }
+        // Fog is enabled in the saved scene so its shader variants are kept in the build (games may turn it off at runtime).
+        var opened = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogDensity = 0.002f;
+        EditorSceneManager.MarkSceneDirty(opened);
+        EditorSceneManager.SaveScene(opened);
         EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
     }
 

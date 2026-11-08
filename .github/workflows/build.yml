@@ -12,6 +12,10 @@ on:
         description: "Android APK da üretilsin mi? (yaklaşık 20-30 dk ekler)"
         type: boolean
         default: true
+      ekran:
+        description: "Otomatik ekran görüntüleri al (geliştirme için)"
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       ref:
@@ -23,6 +27,9 @@ on:
       android:
         type: boolean
         default: true
+      ekran:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -42,6 +49,15 @@ jobs:
           path: Library
           key: Library-WebGL-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
           restore-keys: Library-WebGL-
+
+      - name: Ücretsiz doku/model kaynaklarını önbellekten al
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/PH
+          key: PH-${{ hashFiles('Assets/Scripts/Game/kaynaklar.json', 'tools/polyhaven.py') }}
+
+      - name: Kaynakları indir (Poly Haven, CC0)
+        run: python3 tools/polyhaven.py Assets/Scripts/Game/kaynaklar.json Assets/Resources/PH
 
       - name: Unity'yi kur
         uses: RageAgainstThePixel/unity-setup@v3
@@ -104,6 +120,15 @@ jobs:
           key: Library-Android-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
           restore-keys: Library-Android-
 
+      - name: Ücretsiz doku/model kaynaklarını önbellekten al
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/PH
+          key: PH-${{ hashFiles('Assets/Scripts/Game/kaynaklar.json', 'tools/polyhaven.py') }}
+
+      - name: Kaynakları indir (Poly Haven, CC0)
+        run: python3 tools/polyhaven.py Assets/Scripts/Game/kaynaklar.json Assets/Resources/PH
+
       - name: Unity'yi kur
         uses: RageAgainstThePixel/unity-setup@v3
         with:
@@ -137,6 +162,76 @@ jobs:
           name: android
           path: build/Android/*.apk
           if-no-files-found: error
+
+  ekran:
+    name: 📸 Ekran görüntüleri
+    if: ${{ inputs.ekran == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Linux-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: Library-Linux-
+
+      - name: Ücretsiz doku/model kaynaklarını önbellekten al
+        uses: actions/cache@v4
+        with:
+          path: Assets/Resources/PH
+          key: PH-${{ hashFiles('Assets/Scripts/Game/kaynaklar.json', 'tools/polyhaven.py') }}
+
+      - name: Kaynakları indir (Poly Haven, CC0)
+        run: python3 tools/polyhaven.py Assets/Scripts/Game/kaynaklar.json Assets/Resources/PH
+
+      - name: Unity'yi kur
+        uses: RageAgainstThePixel/unity-setup@v3
+        with:
+          version-file: None
+          unity-version: "6000.0.x"
+          build-targets: StandaloneLinux64
+          cache-installation: true
+
+      - name: Unity lisansını etkinleştir
+        uses: RageAgainstThePixel/activate-unity-license@v3
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Linux sürümünü derle
+        uses: RageAgainstThePixel/unity-action@v4
+        with:
+          project-path: ${{ github.workspace }}
+          build-target: StandaloneLinux64
+          log-name: Linux-Build
+          args: >-
+            -quit -batchmode -nographics
+            -executeMethod ArcBuild.BuildFromCommandLine
+            -customBuildTarget StandaloneLinux64
+            -customBuildPath ${{ github.workspace }}/build/Linux/Oyun.x86_64
+
+      - name: Oyunu sanal ekranda çalıştır ve fotoğrafla
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb mesa-utils libgl1-mesa-dri > /dev/null
+          mkdir -p shots
+          chmod +x build/Linux/Oyun.x86_64
+          timeout 240 xvfb-run -a -s "-screen 0 1280x720x24" \
+            ./build/Linux/Oyun.x86_64 -force-glcore -screen-width 1280 -screen-height 720 -screen-fullscreen 0 \
+            -logFile "$PWD/shots/player.log" -arcshot "$PWD/shots" || echo "oyun çıkış kodu: $?"
+          ls -la shots
+          grep -E "ArcShot|Exception|Error|error|warning \[Arc\]|\[Arc\]" shots/player.log | head -60 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ekran
+          path: shots
 
   publish:
     name: 🚀 Yayınla

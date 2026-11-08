@@ -1,174 +1,307 @@
-using System.Collections.Generic;
 using Arc;
 using UnityEngine;
 
 namespace Game
 {
     /// <summary>
-    /// Starter game "Yıldız Avcısı": move left/right, catch gold stars, dodge red blocks.
-    /// Speed and spawn rate grow over time. Replace this file with any new game idea.
+    /// EVE SERVİS — İstanbul'da motor kurye. Restorandan siparişi al, adrese zamanında teslim et.
+    /// Phase 1: realistic city + bike + order loop. (Traffic, pedestrians and police come in phase 2.)
     /// </summary>
     public class GameMain : ArcGame
     {
         protected override string HowToPlay =>
-            "Ekranın sol / sağ yarısına basılı tut (veya ← →)\nSarı yıldızları topla, kırmızı bloklardan kaç!";
+            "Restorandan siparişi al, adrese zamanında götür!\nKlavye: W/S gaz-fren, A/D direksiyon  •  Telefon: ekrandaki düğmeler";
 
-        class Faller
-        {
-            public Transform t;
-            public bool good;
-            public Vector3 spin;
-            public float radius;
-        }
+        protected override string EndTitle(bool won) => "VARDİYA BİTTİ";
 
+        enum Step { ToRestaurant, ToCustomer }
+
+        City city;
+        Moto moto;
         Camera cam;
-        Transform player;
-        readonly List<Faller> fallers = new List<Faller>();
-        float halfW, halfH, spawnTimer, speed, scoreTimer, tilt;
+        Transform beacon, arrow;
+        Material beaconPickup, beaconDrop;
 
-        const float PlayerY = -6.5f;
-        const float PlayerSpeed = 11f;
+        Step step;
+        Place restaurant, customer;
+        float orderTime, orderTimeLeft, shiftLeft, crashCooldown;
+        int delivered, late;
+        string toast;
+        float toastTime;
+
+        const float ShiftSeconds = 300f;
+        const float ArriveRadius = 3.2f;
+
+        // camera smoothing
+        Vector3 camVel;
+        float orbit;
+
+        // touch controls (screen-space rects, bottom-left origin like Input.mousePosition)
+        float tThrottle, tSteer;
 
         protected override void Setup()
         {
             cam = Camera.main;
-            cam.orthographic = true;
-            cam.orthographicSize = 9f;
-            cam.transform.SetPositionAndRotation(new Vector3(0f, 0f, -10f), Quaternion.identity);
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Palette.Bg;
-            halfH = cam.orthographicSize;
+            cam.orthographic = false;
+            cam.fieldOfView = 62f;
+            cam.nearClipPlane = 0.1f;
+            cam.farClipPlane = 700f;
 
-            // Ground strip + background "stars" for depth.
-            Shapes.Cube(new Vector3(0f, PlayerY - 1.4f, 1f), new Vector3(60f, 1.2f, 2f), Palette.Ground);
-            for (int i = 0; i < 40; i++)
-            {
-                var p = new Vector3(Random.Range(-12f, 12f), Random.Range(-8f, 9f), 5f);
-                Shapes.Sphere(p, Random.Range(0.05f, 0.15f), new Color(1f, 1f, 1f, 1f), lit: false);
-            }
+            Look.Realistic("belfast_sunset_puresky", sunElevation: 28f, sunAzimuth: -35f, sunIntensity: 1.7f,
+                sunColor: new Color(1f, 0.86f, 0.68f), exposure: 0.2f, fogDensity: 0.006f, fogColor: new Color(0.86f, 0.74f, 0.62f));
 
-            // Player: a little rounded ship made of 3 shapes.
-            player = Shapes.Group("Player", new Vector3(0f, PlayerY, 0f));
-            Shapes.Capsule(Vector3.zero, new Vector3(1.2f, 0.7f, 1.2f), Palette.Primary, parent: player).transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
-            Shapes.Sphere(new Vector3(0f, 0.35f, -0.2f), 0.55f, Palette.Lighter(Palette.Primary, 0.5f), parent: player);
-            Shapes.Cube(new Vector3(0f, -0.45f, 0f), new Vector3(1.6f, 0.15f, 0.6f), Palette.Darker(Palette.Primary, 0.3f), parent: player);
+            city = new City(1453);
+            moto = new Moto();
 
-            Sfx.Music("C4 E4 G4 E4 A4 G4 E4 D4 C4 E4 G4 C5 B4 G4 E4 -", 132f, 0.12f);
+            beaconPickup = Mats.Unlit(new Color(1f, 0.78f, 0.15f));
+            beaconDrop = Mats.Unlit(new Color(0.2f, 0.95f, 0.5f));
+            beacon = Shapes.Group("Hedef", Vector3.zero);
+            Shapes.Cylinder(new Vector3(0f, 6f, 0f), new Vector3(0.35f, 6f, 0.35f), Color.white, lit: false, parent: beacon);
+            Shapes.Cylinder(new Vector3(0f, 0.04f, 0f), new Vector3(3.4f, 0.03f, 3.4f), Color.white, lit: false, parent: beacon);
+            Shapes.Cube(new Vector3(0f, 2.2f, 0f), Vector3.one * 0.7f, Color.white, lit: false, parent: beacon);
+
+            arrow = Shapes.Group("Ok", Vector3.zero);
+            var shaft = Shapes.Cube(new Vector3(0f, 0f, -0.15f), new Vector3(0.18f, 0.06f, 0.6f), Color.white, lit: false, parent: arrow);
+            var headL = Shapes.Cube(new Vector3(-0.12f, 0f, 0.2f), new Vector3(0.12f, 0.06f, 0.42f), Color.white, lit: false, parent: arrow);
+            headL.transform.localRotation = Quaternion.Euler(0f, 40f, 0f);
+            var headR = Shapes.Cube(new Vector3(0.12f, 0f, 0.2f), new Vector3(0.12f, 0.06f, 0.42f), Color.white, lit: false, parent: arrow);
+            headR.transform.localRotation = Quaternion.Euler(0f, -40f, 0f);
+
+            Sfx.Music("A3 C4 E4 - D4 C4 B3 - A3 E4 D4 C4 B3 - G3 -", 104f, 0.07f, Wave.Triangle);
         }
 
         protected override void ResetRound()
         {
-            foreach (var f in fallers) if (f.t != null) Destroy(f.t.gameObject);
-            fallers.Clear();
-            player.position = new Vector3(0f, PlayerY, 0f);
-            player.rotation = Quaternion.identity;
-            spawnTimer = 0.8f;
-            speed = 5f;
-            scoreTimer = 0f;
-            tilt = 0f;
+            moto.Place(new Vector3(-2.5f, 0f, -150f), 0f);
+            shiftLeft = ShiftSeconds;
+            delivered = 0;
+            late = 0;
+            crashCooldown = 0f;
+            toast = null;
+            NewOrder();
+            SnapCamera();
         }
 
-        protected override void IdleTick(float dt)
+        void NewOrder()
         {
-            // Gentle bobbing on menu so the screen feels alive.
-            player.position = new Vector3(Mathf.Sin(Time.time * 1.5f) * 1.5f, PlayerY + Mathf.Sin(Time.time * 3f) * 0.1f, 0f);
+            restaurant = city.Restaurants[Random.Range(0, city.Restaurants.Count)];
+            customer = null;
+            step = Step.ToRestaurant;
+            SetBeacon(restaurant.DoorPos, beaconPickup);
+        }
+
+        void SetBeacon(Vector3 pos, Material m)
+        {
+            beacon.position = new Vector3(pos.x, 0.16f, pos.z);
+            foreach (var r in beacon.GetComponentsInChildren<Renderer>()) r.sharedMaterial = m;
+            foreach (var r in arrow.GetComponentsInChildren<Renderer>()) r.sharedMaterial = m;
         }
 
         protected override void Tick(float dt)
         {
-            halfW = halfH * cam.aspect; // recomputed every frame: browser windows can be resized
+            shiftLeft -= dt;
+            if (shiftLeft <= 0f) { shiftLeft = 0f; GameOver(true); return; }
 
-            // Difficulty ramp.
-            speed = 5f + PlayTime * 0.28f;
-
-            // Movement with a little tilt for juice.
-            float dir = Inputs.Horizontal;
-            var p = player.position;
-            p.x = Mathf.Clamp(p.x + dir * PlayerSpeed * dt, -halfW + 0.9f, halfW - 0.9f);
-            player.position = p;
-            tilt = Mathf.Lerp(tilt, -dir * 18f, dt * 10f);
-            player.rotation = Quaternion.Euler(0f, 0f, tilt);
-
-            // Survival points.
-            scoreTimer += dt;
-            if (scoreTimer >= 1f) { scoreTimer -= 1f; Score += 1; }
-
-            // Spawning.
-            spawnTimer -= dt;
-            if (spawnTimer <= 0f)
+            ReadControls(out float throttle, out float steer);
+            bool crash = moto.Drive(throttle, steer, dt, city);
+            crashCooldown -= dt;
+            if (crash && crashCooldown <= 0f)
             {
-                spawnTimer = Mathf.Max(0.28f, 0.85f - PlayTime * 0.012f);
-                Spawn();
+                crashCooldown = 1f;
+                Sfx.Hit();
+                Juice.Shake(0.35f, 0.3f);
+                Score = Mathf.Max(0, Score - 5);
+                ShowToast("Dikkat! -5");
             }
 
-            // Move + collide.
-            for (int i = fallers.Count - 1; i >= 0; i--)
+            // Order logic
+            Vector3 target = step == Step.ToRestaurant ? restaurant.DoorPos : customer.DoorPos;
+            if (step == Step.ToCustomer)
             {
-                var f = fallers[i];
-                f.t.position += Vector3.down * speed * dt;
-                f.t.Rotate(f.spin * dt);
-
-                Vector2 d = f.t.position - player.position;
-                if (d.magnitude < f.radius + 0.6f)
+                orderTimeLeft -= dt;
+            }
+            float dist = Flat(target - moto.Root.position).magnitude;
+            if (dist < ArriveRadius && moto.Kmh < 20f)
+            {
+                if (step == Step.ToRestaurant)
                 {
-                    if (f.good)
-                    {
-                        Score += 10;
-                        Sfx.Coin();
-                        Juice.Burst(f.t.position, Palette.Accent, 18, 5f, 0.25f);
-                        Juice.FloatText("+10", f.t.position, Palette.Accent);
-                        Juice.Pop(player, 0.25f);
-                        Remove(i);
-                    }
-                    else
-                    {
-                        Sfx.Explosion();
-                        Juice.Burst(player.position, Palette.Danger, 50, 9f, 0.35f, 0.9f);
-                        Juice.Shake(0.6f, 0.35f);
-                        Juice.Flash(Palette.Danger, 0.25f);
-                        Juice.HitStop(0.08f);
-                        GameOver();
-                        return;
-                    }
+                    customer = city.Homes[Random.Range(0, city.Homes.Count)];
+                    float route = Flat(customer.DoorPos - restaurant.DoorPos).magnitude;
+                    orderTime = 20f + route / 7f;
+                    orderTimeLeft = orderTime;
+                    step = Step.ToCustomer;
+                    SetBeacon(customer.DoorPos, beaconDrop);
+                    Sfx.PowerUp();
+                    Juice.Pop(moto.Root, 0.15f);
+                    ShowToast("Sipariş alındı: " + restaurant.Name);
                 }
-                else if (f.t.position.y < -halfH - 2f)
+                else
                 {
-                    Remove(i);
+                    int pts = 50 + Mathf.Max(0, Mathf.RoundToInt(orderTimeLeft * 2f));
+                    if (orderTimeLeft < 0f) { pts = 20; late++; }
+                    Score += pts;
+                    delivered++;
+                    Sfx.Coin();
+                    Juice.Burst(customer.DoorPos + Vector3.up, Palette.Accent, 30, 5f, 0.25f);
+                    Juice.FloatText("+" + pts, customer.DoorPos + Vector3.up * 2.5f, Palette.Accent);
+                    ShowToast(orderTimeLeft < 0f ? "Geç kaldın ama teslim edildi +" + pts : "Teslim edildi! Bahşiş dahil +" + pts);
+                    NewOrder();
                 }
             }
+
+            UpdateBeaconAndArrow(target);
+            UpdateCamera(dt, false);
         }
 
-        void Spawn()
+        protected override void IdleTick(float dt)
         {
-            bool good = Random.value < 0.32f;
-            float x = Random.Range(-halfW + 1f, halfW - 1f);
-            var pos = new Vector3(x, halfH + 1.5f, 0f);
-            GameObject go;
-            float radius;
-            if (good)
+            if (cam == null || moto == null) return;
+            UpdateBeaconAndArrow(beacon.position);
+            UpdateCamera(dt, true);
+        }
+
+        void ReadControls(out float throttle, out float steer)
+        {
+            float kt = 0f, ks = 0f;
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) kt += 1f;
+            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.Space)) kt -= 1f;
+            if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) ks -= 1f;
+            if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) ks += 1f;
+
+            ReadTouch();
+            throttle = Mathf.Clamp(kt + tThrottle + Inputs.SimMove.y, -1f, 1f);
+            steer = Mathf.Clamp(ks + tSteer + Inputs.SimMove.x, -1f, 1f);
+        }
+
+        // ---- on-screen buttons (multi-touch) ----
+        Rect BtnLeft => new Rect(Hud.U * 30f, Hud.U * 30f, Hud.U * 130f, Hud.U * 130f);
+        Rect BtnRight => new Rect(Hud.U * 180f, Hud.U * 30f, Hud.U * 130f, Hud.U * 130f);
+        Rect BtnGas => new Rect(Screen.width - Hud.U * 160f, Hud.U * 30f, Hud.U * 130f, Hud.U * 160f);
+        Rect BtnBrake => new Rect(Screen.width - Hud.U * 310f, Hud.U * 30f, Hud.U * 130f, Hud.U * 110f);
+        bool ShowTouch => Input.touchSupported || Application.isMobilePlatform;
+
+        void ReadTouch()
+        {
+            tThrottle = 0f;
+            tSteer = 0f;
+            for (int i = 0; i < Input.touchCount; i++) Press(Input.GetTouch(i).position);
+            if (Input.touchCount == 0 && Input.GetMouseButton(0) && ShowTouch) Press(Input.mousePosition);
+        }
+
+        void Press(Vector2 p)
+        {
+            if (BtnLeft.Contains(p)) tSteer -= 1f;
+            if (BtnRight.Contains(p)) tSteer += 1f;
+            if (BtnGas.Contains(p)) tThrottle += 1f;
+            if (BtnBrake.Contains(p)) tThrottle -= 1f;
+        }
+
+        void UpdateBeaconAndArrow(Vector3 target)
+        {
+            beacon.Rotate(0f, 60f * Time.deltaTime, 0f);
+            Vector3 head = moto.Root.position + Vector3.up * 2.3f;
+            arrow.position = head;
+            Vector3 dir = Flat(target - moto.Root.position);
+            if (dir.sqrMagnitude > 0.01f) arrow.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
+            arrow.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 6f) * 0.08f);
+        }
+
+        void SnapCamera()
+        {
+            if (cam == null) return;
+            cam.transform.position = moto.Root.position - moto.Forward * 6.5f + Vector3.up * 2.6f;
+            cam.transform.LookAt(moto.Root.position + Vector3.up * 1.2f + moto.Forward * 3f);
+        }
+
+        void UpdateCamera(float dt, bool idle)
+        {
+            Vector3 focus = moto.Root.position + Vector3.up * 1.2f;
+            Vector3 desired;
+            if (idle)
             {
-                go = Shapes.Sphere(pos, 0.9f, Palette.Accent);
-                radius = 0.45f;
+                orbit += dt * 12f;
+                Vector3 off = Quaternion.Euler(0f, orbit, 0f) * new Vector3(0f, 0f, -7.5f);
+                desired = focus + off + Vector3.up * 1.6f;
+                cam.transform.position = Vector3.SmoothDamp(cam.transform.position, desired, ref camVel, 0.4f);
+                cam.transform.LookAt(focus);
+                return;
+            }
+            float back = 6.2f + moto.Kmh * 0.03f;
+            desired = moto.Root.position - moto.Forward * back + Vector3.up * (2.4f + moto.Kmh * 0.008f);
+            cam.transform.position = Vector3.SmoothDamp(cam.transform.position, desired, ref camVel, 0.18f);
+            cam.transform.LookAt(focus + moto.Forward * 3.5f);
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, 60f + moto.Kmh * 0.18f, dt * 3f);
+        }
+
+        void ShowToast(string text)
+        {
+            toast = text;
+            toastTime = 2.5f;
+        }
+
+        static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
+
+        protected override void DrawHud()
+        {
+            base.DrawHud();
+            int m = Mathf.FloorToInt(shiftLeft / 60f), s = Mathf.FloorToInt(shiftLeft % 60f);
+            Hud.Text("Vardiya: " + m + ":" + s.ToString("00") + "   Teslimat: " + delivered, 24, 112, 0.75f);
+
+            // Order panel (top center)
+            string line1, line2;
+            Vector3 target = step == Step.ToRestaurant ? restaurant.DoorPos : customer.DoorPos;
+            int dist = Mathf.RoundToInt(Flat(target - moto.Root.position).magnitude);
+            if (step == Step.ToRestaurant)
+            {
+                line1 = "SİPARİŞİ AL: " + restaurant.Name;
+                line2 = "Restorana " + dist + " m";
             }
             else
             {
-                float s = Random.Range(0.9f, 1.7f);
-                go = Shapes.Cube(pos, Vector3.one * s, Palette.Danger);
-                radius = s * 0.5f;
+                line1 = "TESLİM ET: " + customer.Name + " (" + customer.District + ")";
+                line2 = dist + " m  •  Kalan süre: " + Mathf.CeilToInt(Mathf.Max(0f, orderTimeLeft)) + " sn";
             }
-            fallers.Add(new Faller
+            Hud.Center(line1, -Screen.height * 0.5f / Hud.U + 60f, 0.8f, step == Step.ToRestaurant ? Palette.Accent : Palette.Good);
+            Hud.Center(line2, -Screen.height * 0.5f / Hud.U + 100f, 0.7f);
+            if (step == Step.ToCustomer)
             {
-                t = go.transform,
-                good = good,
-                radius = radius,
-                spin = new Vector3(Random.Range(-180f, 180f), Random.Range(-180f, 180f), Random.Range(-90f, 90f))
-            });
+                float k = Mathf.Clamp01(orderTimeLeft / Mathf.Max(1f, orderTime));
+                float barW = 360f;
+                float x = (Screen.width / Hud.U - barW) * 0.5f;
+                Hud.Bar(x, 128f, barW, 10f, k, k > 0.3f ? Palette.Good : Palette.Danger);
+            }
+
+            // Speedometer
+            Hud.TextRight(Mathf.RoundToInt(moto.Kmh) + " km/sa", 30, Screen.height / Hud.U - (ShowTouch ? 230f : 80f), 1.3f);
+
+            if (toast != null && toastTime > 0f)
+            {
+                toastTime -= Time.unscaledDeltaTime;
+                Hud.Center(toast, 140f, 0.85f, Palette.Accent);
+            }
+
+            if (ShowTouch) DrawTouchButtons();
         }
 
-        void Remove(int index)
+        void DrawTouchButtons()
         {
-            if (fallers[index].t != null) Destroy(fallers[index].t.gameObject);
-            fallers.RemoveAt(index);
+            Btn(BtnLeft, "◀", tSteer < 0f);
+            Btn(BtnRight, "▶", tSteer > 0f);
+            Btn(BtnGas, "GAZ", tThrottle > 0f);
+            Btn(BtnBrake, "FREN", tThrottle < 0f);
+        }
+
+        // Converts a bottom-left screen rect to GUI coordinates (top-left) and draws it.
+        static void Btn(Rect r, string label, bool active)
+        {
+            var g = new Rect(r.x, Screen.height - r.y - r.height, r.width, r.height);
+            var old = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, active ? 0.45f : 0.22f);
+            GUI.DrawTexture(g, Texture2D.whiteTexture);
+            GUI.color = old;
+            var st = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(34 * Hud.U), fontStyle = FontStyle.Bold };
+            st.normal.textColor = Color.white;
+            GUI.Label(g, label, st);
         }
     }
 }

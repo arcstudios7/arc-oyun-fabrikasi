@@ -23,6 +23,8 @@ namespace Arc
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.55f, 0.55f, 0.6f);
 
+            ArcShot.TryStart();
+
             if (Object.FindFirstObjectByType<ArcGame>() == null)
             {
                 var go = new GameObject("Game");

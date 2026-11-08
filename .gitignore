@@ -22,3 +22,9 @@
 
 # CI çalışma dosyaları (build logu, özet)
 /_ci/
+
+# Gerçekçi mod: indirilen Poly Haven kaynakları ve otomatik üretilen URP ayarları
+/Assets/Resources/PH/
+/Assets/Settings/
+/Assets/UniversalRenderPipelineGlobalSettings.asset
+/Assets/DefaultVolumeProfile.asset
