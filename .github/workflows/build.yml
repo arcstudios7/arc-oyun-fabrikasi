@@ -175,6 +175,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ARC_DOMAIN: ${{ vars.ARC_DOMAIN }}
         run: |
           set -e
           SLUG=$(grep -oP 'Slug\s*=\s*"\K[^"]+' Assets/Scripts/Game/GameInfo.cs || echo "oyun")
@@ -183,12 +184,42 @@ jobs:
           npx --yes wrangler@4 pages deploy site --project-name "$PROJ" --branch main --commit-dirty=true
           SUB=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJ" | jq -r '.result.subdomain // empty')
-          echo "url=https://${SUB:-$PROJ.pages.dev}" >> "$GITHUB_OUTPUT"
+          TARGET="${SUB:-$PROJ.pages.dev}"
+          URL="https://$TARGET"
+
+          # pages.dev bazı Türk internet sağlayıcılarında engelli: oyunu kendi alan adının altına da bağla.
+          # <slug>.arcstudios.com.tr  (tek seviye alt alan adı: ücretsiz SSL sertifikası bunu kapsar)
+          ZONE_NAME="${ARC_DOMAIN:-arcstudios.com.tr}"
+          HOST="${SLUG}.${ZONE_NAME}"
+          cf() { curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$@"; }
+          API=https://api.cloudflare.com/client/v4
+          ZONE_ID=$(cf "$API/zones?name=$ZONE_NAME" | jq -r '.result[0].id // empty')
+          if [ -z "$ZONE_ID" ]; then
+            echo "::warning::Token $ZONE_NAME alan adını göremiyor (Zone:DNS:Edit izni eksik). Sadece pages.dev adresi kullanılıyor."
+          else
+            REC=$(cf "$API/zones/$ZONE_ID/dns_records?name=$HOST")
+            REC_ID=$(echo "$REC" | jq -r '.result[0].id // empty')
+            REC_CONTENT=$(echo "$REC" | jq -r '.result[0].content // empty')
+            if [ -z "$REC_ID" ]; then
+              cf -X POST "$API/zones/$ZONE_ID/dns_records" \
+                -d "{\"type\":\"CNAME\",\"name\":\"$HOST\",\"content\":\"$TARGET\",\"proxied\":true,\"comment\":\"ARC Oyun Fabrikası\"}" | jq -c '{success, errors}'
+              REC_CONTENT="$TARGET"
+            fi
+            if [ "$REC_CONTENT" = "$TARGET" ]; then
+              cf -X POST "$API/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJ/domains" -d "{\"name\":\"$HOST\"}" | jq -c '{success, errors}'
+              URL="https://$HOST"
+            else
+              echo "::warning::$HOST zaten başka bir yere ($REC_CONTENT) bağlı; dokunulmadı. pages.dev adresi kullanılıyor."
+            fi
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "alt=https://$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: Release oluştur ve haber ver
         env:
           GH_TOKEN: ${{ github.token }}
           PAGE_URL: ${{ steps.cf.outputs.url }}
+          ALT_URL: ${{ steps.cf.outputs.alt }}
           ISSUE: ${{ inputs.issue_number }}
         run: |
           set -e
@@ -202,6 +233,7 @@ jobs:
           if [ -n "$APK" ]; then cp "$APK" "${SLUG}.apk"; FILES="$FILES ${SLUG}.apk"; fi
           if [ -n "$PAGE_URL" ]; then
             WEB_LINE="▶️ **Tarayıcıda oyna (telefon/PC):** ${PAGE_URL}"
+            if [ -n "$ALT_URL" ] && [ "$ALT_URL" != "$PAGE_URL" ]; then WEB_LINE="${WEB_LINE} (yedek: ${ALT_URL})"; fi
           else
             WEB_LINE="🌐 Web linki için Cloudflare anahtarlarını ekle (README → 4. adım). Şimdilik web sürümü Release'teki \`${SLUG}-web.zip\` içinde."
           fi
