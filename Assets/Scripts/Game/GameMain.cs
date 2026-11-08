@@ -44,6 +44,7 @@ namespace Game
 
         bool ready;
         SafetyFloor floor;
+        bool shotCloseUp;
         float logTimer, readyTimer, shiftLeft, orderTime, orderLeft, gpsTimer, fade, toastTime;
         int delivered;
         string toast;
@@ -83,6 +84,7 @@ namespace Game
             floor = SafetyFloor.Create();
             ArcShot.ReadyCheck = () => ready;
             ArcShot.ExtraWait = 60f;   // software renderer in CI runs ~4 fps: give the detail tiles time
+            ArcShot.CloseUp = () => shotCloseUp = true;
 
             pickupMat = Mats.Unlit(new Color(1f, 0.75f, 0.1f));
             dropMat = Mats.Unlit(new Color(0.15f, 0.95f, 0.45f));
@@ -351,6 +353,14 @@ namespace Game
             rig.Height = courier.Riding ? 1.5f : 1.55f;
             rig.Distance = courier.Riding ? 5.2f : 3.6f;
             rig.Tick(input.Look, input.LookIsMouse, courier.Riding ? Mathf.Abs(bike.Speed) : courier.Speed, input.RecenterPressed, dt);
+            if (shotCloseUp)
+            {
+                // CI screenshot: side view of the rider to check pose, hands and feet.
+                var ct = Camera.main.transform;
+                Vector3 b = bike.transform.position;
+                ct.position = b + bike.transform.right * 2.4f + bike.transform.forward * 0.6f + Vector3.up * 1.2f;
+                ct.LookAt(b + Vector3.up * 0.95f);
+            }
         }
 
         void GetOn()

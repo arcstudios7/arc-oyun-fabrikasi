@@ -25,18 +25,19 @@ import urllib.parse
 import urllib.request
 
 UA = "ARC-Oyun-Fabrikasi/1.0 (+https://arcstudios.com.tr)"
-ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
+ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter",
+             "https://overpass.private.coffee/api/interpreter"]
 DRIVABLE = "motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link"
 
 
 def overpass(query):
     data = urllib.parse.urlencode({"data": query}).encode()
     last = None
-    for attempt in range(4):
+    for attempt in range(3):
         for url in ENDPOINTS:
             try:
                 req = urllib.request.Request(url, data=data, headers={"User-Agent": UA})
-                with urllib.request.urlopen(req, timeout=180) as r:
+                with urllib.request.urlopen(req, timeout=90) as r:
                     return json.loads(r.read())
             except Exception as e:  # noqa: BLE001
                 last = e

@@ -17,6 +17,9 @@ namespace Arc
 
         /// <summary>Seconds to wait after ReadyCheck passes (streamed worlds load detail slowly on the CI software renderer).</summary>
         public static float ExtraWait = 8f;
+
+        /// <summary>Optional: the game moves its camera for a close-up of the player (taken last, as 07_yakin).</summary>
+        public static System.Action CloseUp;
         string dir;
 
         internal static void TryStart()
@@ -59,6 +62,12 @@ namespace Arc
             }
             Inputs.SimMove = Vector2.zero;
             yield return new WaitForSecondsRealtime(0.5f);
+            if (CloseUp != null)
+            {
+                CloseUp();
+                yield return new WaitForSecondsRealtime(3f);
+                yield return Shot("07_yakin");
+            }
             Debug.Log("[ArcShot] bitti, fps≈" + (1f / Mathf.Max(0.0001f, Time.smoothDeltaTime)).ToString("0"));
             Application.Quit();
         }

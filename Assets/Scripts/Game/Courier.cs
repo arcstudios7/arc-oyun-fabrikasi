@@ -53,6 +53,11 @@ namespace Game
                 Model.localRotation = Quaternion.identity;
                 Model.name = "KuryeModel";
                 FixMaterials(Model.gameObject);
+                foreach (var r in Model.GetComponentsInChildren<Renderer>())
+                    foreach (var m in r.sharedMaterials)
+                        if (m != null)
+                            Debug.Log("[Eve] Kurye malzemesi: " + r.name + " / " + m.name + " / " + m.shader.name + " / doku=" +
+                                      (m.HasProperty("_BaseMap") && m.GetTexture("_BaseMap") != null ? m.GetTexture("_BaseMap").name : "YOK"));
                 anim = Model.GetComponentInChildren<Animator>();
                 if (anim == null) anim = Model.gameObject.AddComponent<Animator>();
                 anim.runtimeAnimatorController = Resources.Load<RuntimeAnimatorController>("Kurye/KuryeAnimator");
