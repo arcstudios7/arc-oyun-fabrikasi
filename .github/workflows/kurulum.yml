@@ -46,7 +46,7 @@ jobs:
 
           if [ "$HAS_ANTHROPIC_KEY" = "true" ]; then row "ANTHROPIC_API_KEY (Claude API)" "✅ var";
           elif [ "$HAS_CLAUDE_TOKEN" = "true" ]; then row "Claude erişimi (abonelik token'ı)" "✅ var";
-          else row "ANTHROPIC_API_KEY" "❌ eksik"; OK=false; fi
+          else row "Claude anahtarı" "⚠️ yok: issue ile otomatik oyun kapalı. Oyunları Claude sohbetinden yaptırabilirsin"; fi
 
           if [ "$HAS_CF_TOKEN" = "true" ] && [ "$HAS_CF_ACCOUNT" = "true" ]; then
             if curl -s -H "Authorization: Bearer $CF_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify | grep -q '"active"'; then
